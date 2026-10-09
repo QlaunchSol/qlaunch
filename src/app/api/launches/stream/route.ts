@@ -1,4 +1,4 @@
-import { listenerCount, onLaunch } from "@/lib/server/events";
+import { listenerCount, onLaunch, onShutdown } from "@/lib/server/events";
 
 const MAX_CLIENTS = 500;
 
@@ -22,8 +22,16 @@ export async function GET(request: Request) {
       send("retry: 5000\n\n");
       const off = onLaunch((mint) => send(`event: launch\ndata: ${mint}\n\n`));
       const ping = setInterval(() => send(": ping\n\n"), 25_000);
+      // Server stopping: end the stream; the browser reconnects (retry: 5000) to the new process.
+      const offShutdown = onShutdown(() => {
+        cleanup();
+        try {
+          controller.close();
+        } catch {}
+      });
       cleanup = () => {
         off();
+        offShutdown();
         clearInterval(ping);
       };
       request.signal.addEventListener("abort", () => {
@@ -38,6 +46,8 @@ export async function GET(request: Request) {
     },
   });
   return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" },
+    // Connection: close, so the proxy drops this upstream connection when the stream ends
+    // instead of pooling it: a pooled one would hold up a graceful shutdown.
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "close", "X-Accel-Buffering": "no" },
   });
 }

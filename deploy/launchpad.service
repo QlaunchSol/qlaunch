@@ -17,6 +17,8 @@ Environment=NEXT_DIST_DIR=.next-live
 ExecStart=/home/deploy/launchpad/node_modules/.bin/next start
 Restart=always
 RestartSec=3
+# Safety net: never wait the default 90 s for a stuck shutdown.
+TimeoutStopSec=15
 # Hardening
 NoNewPrivileges=true
 PrivateTmp=true
