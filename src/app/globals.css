@@ -1,26 +1,112 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  --color-bg: #07090b;
+  --color-panel: #0c1013;
+  --color-panel-2: #11161a;
+  --color-panel-3: #161d22;
+  --color-line: #1c242a;
+  --color-line-2: #2a353d;
+  --color-fg: #e8edf0;
+  --color-muted: #95a2ab;
+  --color-faint: #5f6c75;
+  --color-mint: #5ef0b6;
+  --color-mint-2: #3fd69b;
+  --color-mint-dim: #12382b;
+  --color-ice: #8fb8ff;
+  --color-warn: #f2c46d;
+  --color-bad: #ff7070;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --animate-blink: blink 1.1s steps(1) infinite;
+  --animate-rise: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-pulse-mint: pulse-mint 2.4s ease-in-out infinite;
+
+  @keyframes blink {
+    50% {
+      opacity: 0;
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes pulse-mint {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(94 240 182 / 0);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgb(94 240 182 / 0.12);
+    }
   }
 }
 
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-bg);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(1200px 500px at 70% -10%, rgb(94 240 182 / 0.07), transparent 60%),
+    radial-gradient(900px 400px at 0% 0%, rgb(143 184 255 / 0.05), transparent 60%),
+    var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+}
+
+/* A faint lattice behind hero sections: the hash grid the protocol is made of. */
+.lattice {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 75%);
+}
+
+::selection {
+  background: rgb(94 240 182 / 0.3);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Long hashes wrap anywhere instead of overflowing. */
+.hash {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Reown modal above our sticky header. */
+w3m-modal {
+  z-index: 60;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

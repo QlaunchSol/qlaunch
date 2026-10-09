@@ -1,69 +1,97 @@
-import Image from "next/image";
+import { ArrowRight } from "lucide-react";
+import { CoinGrid } from "@/components/coin-grid";
+import { LiveVerify } from "@/components/live-verify";
+import { ButtonLink } from "@/components/ui";
+import { site } from "@/config/site";
+import { configured } from "@/lib/server/env";
+import { listCoins, platformStats } from "@/lib/server/coins";
+import { SIGNATURE_BYTES } from "@/lib/pq";
+import type { CoinList, PlatformStats } from "@/lib/types";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+async function loadInitial(): Promise<{ list: CoinList | null; stats: PlatformStats | null }> {
+  if (!configured.db()) return { list: null, stats: null };
+  const [list, stats] = await Promise.all([listCoins({ sort: "new", graduated: false, q: "", page: 0 }).catch(() => null), platformStats().catch(() => null)]);
+  return { list, stats };
+}
+
+export default async function Home() {
+  const { list, stats } = await loadInitial();
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div>
+      <section className="relative overflow-hidden border-b border-line">
+        <div className="lattice absolute inset-0" aria-hidden />
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-14 lg:grid-cols-[1.05fr_1fr] lg:py-20">
+          <div className="animate-rise">
+            <a href="/docs#threat" className="inline-flex items-center gap-2 rounded-full border border-line-2 bg-panel/70 px-3 py-1 text-xs text-muted transition-colors hover:text-fg">
+              <span className="size-1.5 rounded-full bg-mint" />
+              Why hash-based keys, and why now
+              <ArrowRight className="size-3" />
+            </a>
+            <h1 className="mt-6 text-4xl font-semibold tracking-tight text-fg sm:text-5xl lg:text-[3.4rem] lg:leading-[1.05]">
+              {site.tagline.split(" ").slice(0, 3).join(" ")}
+              <br />
+              <span className="text-mint">{site.tagline.split(" ").slice(3).join(" ")}</span>
+            </h1>
+            <p className="mt-5 max-w-lg text-base leading-relaxed text-muted">
+              Every coin here is signed by a one-time, hash-based key derived from your wallet. It trades on pump.fun like any other, and its proof of
+              origin rests on SHA-256 alone, so it still holds after quantum computers break the elliptic curves Solana runs on.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <ButtonLink href="/launch" size="lg">
+                Launch a coin
+              </ButtonLink>
+              <ButtonLink href="/docs" size="lg" variant="secondary">
+                How it works
+              </ButtonLink>
+            </div>
+            <dl className="mt-10 grid max-w-lg grid-cols-3 gap-6 border-t border-line pt-6">
+              <div>
+                <dt className="text-[11px] uppercase tracking-wider text-faint">Signature</dt>
+                <dd className="mt-1 font-mono text-lg tabular text-fg">{SIGNATURE_BYTES.toLocaleString("en-US")} B</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] uppercase tracking-wider text-faint">Keys / identity</dt>
+                <dd className="mt-1 font-mono text-lg tabular text-fg">256</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] uppercase tracking-wider text-faint">Assumption</dt>
+                <dd className="mt-1 font-mono text-lg text-fg">SHA-256</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="animate-rise [animation-delay:120ms]">
+            <LiveVerify coins={list?.coins ?? []} />
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 pt-10">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight text-fg">Every attested launch</h2>
+            <p className="mt-1 text-sm text-muted">Each one verifiable in your browser, down to the last hash.</p>
+          </div>
+          {stats && (
+            <dl className="flex gap-6 font-mono text-xs text-muted">
+              <div>
+                <dt className="inline text-faint">coins </dt>
+                <dd className="inline tabular text-fg">{stats.launches}</dd>
+              </div>
+              <div>
+                <dt className="inline text-faint">identities </dt>
+                <dd className="inline tabular text-fg">{stats.identities}</dd>
+              </div>
+              <div>
+                <dt className="inline text-faint">keys spent </dt>
+                <dd className="inline tabular text-fg">{stats.keysSpent}</dd>
+              </div>
+            </dl>
+          )}
         </div>
-      </main>
+        <CoinGrid initial={list} />
+      </section>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import "server-only";
 
 /**
- * Server configuration. Required values throw a clear error the first time a
+ * Server configuration, read at request time. Server-only values deliberately
+ * avoid the NEXT_PUBLIC_ prefix: Next.js inlines those at build time.
+ * Required values throw a clear error the first time a
  * feature needs them, instead of failing deep inside a library.
  */
 function required(name: string): string {
@@ -17,8 +19,8 @@ export const env = {
   supabaseUrl: () => required("SUPABASE_URL"),
   supabaseServiceKey: () => required("SUPABASE_SERVICE_ROLE_KEY"),
   pinataJwt: () => required("PINATA_JWT"),
-  pinataGateway: () => required("NEXT_PUBLIC_PINATA_GATEWAY").replace(/^https?:\/\//, "").replace(/\/$/, ""),
-  treasury: () => required("NEXT_PUBLIC_TREASURY"),
+  pinataGateway: () => required("PINATA_GATEWAY").replace(/^https?:\/\//, "").replace(/\/$/, ""),
+  treasury: () => required("TREASURY_ADDRESS"),
   birdeyeKey: () => process.env.BIRDEYE_API_KEY || "",
   redisUrl: () => process.env.REDIS_URL || "",
   adminPassword: () => process.env.ADMIN_PASSWORD || "",
@@ -26,7 +28,7 @@ export const env = {
 
 export const configured = {
   db: () => Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
-  pinata: () => Boolean(process.env.PINATA_JWT && process.env.NEXT_PUBLIC_PINATA_GATEWAY),
-  treasury: () => Boolean(process.env.NEXT_PUBLIC_TREASURY),
+  pinata: () => Boolean(process.env.PINATA_JWT && process.env.PINATA_GATEWAY),
+  treasury: () => Boolean(process.env.TREASURY_ADDRESS),
   helius: () => Boolean(process.env.HELIUS_RPC_URL),
 };

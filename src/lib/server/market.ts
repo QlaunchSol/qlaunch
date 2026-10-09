@@ -1,6 +1,7 @@
 import "server-only";
 import { bondingCurveMarketCap, bondingCurvePda } from "@pump-fun/pump-sdk";
 import { PublicKey } from "@solana/web3.js";
+import type { Candle } from "@/lib/types";
 import { cached } from "./cache";
 import { check, db, ok } from "./db";
 import { configured, env } from "./env";
@@ -155,8 +156,6 @@ export async function refreshAll() {
     running = false;
   }
 }
-
-export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
 
 const RANGES = {
   "1h": { gt: "minute", aggregate: 1, limit: 60, be: "1m", seconds: 3600 },

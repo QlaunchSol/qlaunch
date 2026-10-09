@@ -1,0 +1,26 @@
+[Unit]
+Description=Launchpad (Next.js)
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/home/deploy/launchpad
+EnvironmentFile=/home/deploy/launchpad/.env.production
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=NODE_OPTIONS=--max-old-space-size=384
+ExecStart=/home/deploy/launchpad/node_modules/.bin/next start
+Restart=always
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+MemoryMax=600M
+
+[Install]
+WantedBy=multi-user.target

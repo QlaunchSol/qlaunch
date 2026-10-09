@@ -2,6 +2,7 @@
 import "server-only";
 import { cached } from "./cache";
 import { check, db, identityByAddress, maybe, type CoinRow } from "./db";
+import type { Coin, CoinList, PlatformStats, TokenDetail } from "@/lib/types";
 import { identityJson } from "./identity";
 
 export const SORTS = { new: "launched_at", mcap: "market_cap_usd", volume: "volume_24h_usd", holders: "holders" } as const;
@@ -9,7 +10,7 @@ export type Sort = keyof typeof SORTS;
 export const isSort = (v: unknown): v is Sort => typeof v === "string" && v in SORTS;
 export const PAGE_SIZE = 24;
 
-export function coinJson(c: CoinRow) {
+export function coinJson(c: CoinRow): Coin {
   return {
     mint: c.mint,
     name: c.name,
@@ -33,10 +34,9 @@ export function coinJson(c: CoinRow) {
     complete: c.complete,
   };
 }
-export type Coin = ReturnType<typeof coinJson>;
 
 /** One page of the coin grid. Cached 10s per query so a busy front page costs one query. */
-export function listCoins(p: { sort: Sort; graduated: boolean; q: string; page: number }): Promise<{ coins: Coin[]; hasMore: boolean }> {
+export function listCoins(p: { sort: Sort; graduated: boolean; q: string; page: number }): Promise<CoinList> {
   const key = `coins:${p.sort}:${p.graduated ? 1 : 0}:${p.page}:${p.q.toLowerCase()}`;
   return cached(key, 10_000, async () => {
     let query = db().from("coins").select("*");
@@ -63,7 +63,7 @@ async function count(table: string, apply?: (q: any) => any): Promise<number> {
   return n ?? 0;
 }
 
-export function platformStats(): Promise<{ identities: number; launches: number; keysSpent: number; anchored: number }> {
+export function platformStats(): Promise<PlatformStats> {
   return cached("stats:platform", 30_000, async () => {
     const [identities, launches, keysSpent, anchored] = await Promise.all([
       count("identities"),
@@ -76,8 +76,8 @@ export function platformStats(): Promise<{ identities: number; launches: number;
 }
 
 /** A coin page's data: the coin, its attestation and the creator's identity. */
-export async function tokenDetail(mint: string) {
-  const found = await cached(`token:${mint}`, 10_000, async () => {
+export async function tokenDetail(mint: string): Promise<TokenDetail> {
+  const found = await cached<TokenDetail | null>(`token:${mint}`, 10_000, async () => {
     const coin = maybe(await db().from("coins").select("*").eq("mint", mint).maybeSingle<CoinRow>());
     if (!coin) return null; // not cached: a coin that just went live shows up at once
     const launch = check(await db().from("launches").select("digest, signature").eq("mint", mint).single<{ digest: string; signature: string }>());
@@ -90,4 +90,3 @@ export async function tokenDetail(mint: string) {
   });
   return found ?? { coin: null, attestation: null, identity: null };
 }
-export type TokenDetail = Awaited<ReturnType<typeof tokenDetail>>;

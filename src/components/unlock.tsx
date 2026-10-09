@@ -1,0 +1,139 @@
+"use client";
+
+import { Eye, EyeOff, KeyRound } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState, type ReactNode } from "react";
+import { useIdentity } from "@/lib/client/identity";
+import { walletErrorMessage } from "@/lib/client/api";
+import { useWallet } from "@/lib/client/wallet";
+import { Button, Notice, Panel, Progress, inputClass } from "./ui";
+
+const hintKey = (wallet: string) => `pq:passphrase-hint:${wallet}`;
+
+export function rememberPassphraseUse(wallet: string, used: boolean) {
+  try {
+    localStorage.setItem(hintKey(wallet), used ? "1" : "0");
+  } catch {}
+}
+
+function passphraseHint(wallet: string): boolean | null {
+  try {
+    const v = localStorage.getItem(hintKey(wallet));
+    return v === null ? null : v === "1";
+  } catch {
+    return null;
+  }
+}
+
+export function PassphraseInput({ value, onChange, placeholder, autoFocus, id }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; id?: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        type={show ? "text" : "password"}
+        className={`${inputClass} pr-10 font-mono`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <button type="button" onClick={() => setShow(!show)} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-faint hover:text-fg" aria-label={show ? "Hide passphrase" : "Show passphrase"}>
+        {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+      </button>
+    </div>
+  );
+}
+
+export function UnlockProgressBar() {
+  const { unlocking } = useIdentity();
+  if (!unlocking) return null;
+  const label = { sign: "Approve the signature in your wallet…", stretch: "Stretching passphrase (scrypt)…", keys: "Generating 256 one-time keys…" }[unlocking.phase];
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between text-xs text-muted">
+        <span>{label}</span>
+        {unlocking.phase !== "sign" && <span className="font-mono tabular">{Math.round(unlocking.progress * 100)}%</span>}
+      </div>
+      <Progress value={unlocking.phase === "sign" ? 0.02 : unlocking.progress} />
+    </div>
+  );
+}
+
+/**
+ * Gate for pages that sign: renders children once the wallet is connected,
+ * an identity is registered and its keys are unlocked in this tab.
+ */
+export function RequireKeys({ children, purpose }: { children: ReactNode; purpose: string }) {
+  const { address, connect } = useWallet();
+  const { detail, keys, unlock, unlocking } = useIdentity();
+  const [passphrase, setPassphrase] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<boolean | null>(null);
+
+  useEffect(() => setHint(address ? passphraseHint(address) : null), [address]);
+
+  if (keys) return <>{children}</>;
+
+  if (!address) {
+    return (
+      <Panel className="p-6 text-center">
+        <p className="text-sm text-muted">Connect a Solana wallet to {purpose}.</p>
+        <Button className="mt-4" onClick={connect}>
+          Connect wallet
+        </Button>
+      </Panel>
+    );
+  }
+  if (detail === undefined) return <Panel className="h-40 animate-pulse" />;
+  if (detail === null) {
+    return (
+      <Panel className="p-6 text-center">
+        <p className="text-sm text-muted">This wallet doesn&apos;t have a post-quantum identity yet. Create one first: it takes a minute and costs nothing.</p>
+        <Link href="/identity" className="mt-4 inline-flex h-10 items-center rounded-md bg-mint px-4 text-sm font-medium text-bg hover:bg-mint-2">
+          Create identity
+        </Link>
+      </Panel>
+    );
+  }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await unlock(passphrase);
+      rememberPassphraseUse(address, Boolean(passphrase));
+      setPassphrase("");
+    } catch (err) {
+      setError(walletErrorMessage(err));
+    }
+  };
+
+  return (
+    <Panel className="p-6">
+      <form onSubmit={submit} className="mx-auto max-w-md space-y-4">
+        <div className="flex items-center gap-2 text-sm font-medium text-fg">
+          <KeyRound className="size-4 text-mint" />
+          Unlock your keys to {purpose}
+        </div>
+        <p className="text-xs text-muted">
+          Your wallet signs a fixed message; your keys are re-derived from it here, in this tab. Nothing secret is sent anywhere, and the keys are forgotten
+          when you close the tab.
+        </p>
+        {hint !== false && <PassphraseInput value={passphrase} onChange={setPassphrase} placeholder={hint ? "Passphrase" : "Passphrase (if you set one)"} autoFocus={hint === true} />}
+        <UnlockProgressBar />
+        {error && <Notice tone="bad">{error}</Notice>}
+        <Button type="submit" className="w-full" loading={Boolean(unlocking)}>
+          Unlock
+        </Button>
+        {hint === false && (
+          <button type="button" className="w-full text-xs text-faint hover:text-muted" onClick={() => setHint(true)}>
+            I registered with a passphrase
+          </button>
+        )}
+      </form>
+    </Panel>
+  );
+}

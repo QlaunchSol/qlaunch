@@ -1,8 +1,9 @@
 import "server-only";
+import type { IdentityDetail, IdentityJson, IdentityLaunch } from "@/lib/types";
 import { check, db, usedLeaves, type IdentityRow } from "./db";
 
 /** The public view of an identity: everything here is already public by design. */
-export function identityJson(row: IdentityRow) {
+export function identityJson(row: IdentityRow): IdentityJson {
   return {
     address: row.pq_address,
     wallet: row.wallet,
@@ -18,9 +19,7 @@ export function identityJson(row: IdentityRow) {
   };
 }
 
-export type IdentityJson = ReturnType<typeof identityJson>;
-
-export async function identityDetail(row: IdentityRow) {
+export async function identityDetail(row: IdentityRow): Promise<IdentityDetail> {
   const [leaves, launches] = await Promise.all([
     usedLeaves(row.id),
     db()
@@ -29,7 +28,7 @@ export async function identityDetail(row: IdentityRow) {
       .eq("identity_id", row.id)
       .order("created_at", { ascending: false })
       .limit(100)
-      .then(check),
+      .then((r) => check(r) as IdentityLaunch[]),
   ]);
   return { identity: identityJson(row), usedLeaves: leaves, launches };
 }
