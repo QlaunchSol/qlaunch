@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { useState, type ComponentProps, type ReactNode } from "react";
+import { cx } from "@/lib/cx";
 
-export function cx(...classes: (string | false | null | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
-}
+export { cx };
 
 type ButtonProps = ComponentProps<"button"> & { variant?: "primary" | "secondary" | "ghost" | "danger"; size?: "sm" | "md" | "lg"; loading?: boolean };
 

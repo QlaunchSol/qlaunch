@@ -13,6 +13,7 @@ Environment=PORT=3000
 Environment=HOSTNAME=127.0.0.1
 Environment=NEXT_TELEMETRY_DISABLED=1
 Environment=NODE_OPTIONS=--max-old-space-size=384
+Environment=NEXT_DIST_DIR=.next-live
 ExecStart=/home/deploy/launchpad/node_modules/.bin/next start
 Restart=always
 RestartSec=3

@@ -9,7 +9,7 @@ export function Footer() {
         <div className="max-w-md space-y-3">
           <Wordmark name={site.name} />
           <p className="text-xs leading-relaxed text-faint">
-            Coins launch on pump.fun&apos;s bonding curve. {site.name} is independent and not affiliated with pump.fun. Memecoins are highly speculative: most go to
+            Coins launch on pump.fun&apos;s bonding curve, on Solana. {site.name} is independent and not affiliated with pump.fun. Memecoins are highly speculative: most go to
             zero. A post-quantum attestation proves who launched a coin, not that it is worth anything.
           </p>
         </div>

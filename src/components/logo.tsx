@@ -1,4 +1,4 @@
-import { cx } from "./ui";
+import { cx } from "@/lib/cx";
 
 /**
  * The mark: a Merkle tree read from the bottom, two leaves hashing into one

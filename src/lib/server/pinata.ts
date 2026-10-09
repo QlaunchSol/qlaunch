@@ -42,7 +42,7 @@ async function store(file: Blob, name: string): Promise<{ cid: string; url: stri
     const bytes = Buffer.from(await file.arrayBuffer());
     const id = `${createHash("sha256").update(bytes).digest("hex")}.${EXT[file.type] ?? "bin"}`;
     await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, id), bytes);
+    await writeFile(path.join(/*turbopackIgnore: true*/ dir, id), bytes);
     return { cid: id, url: `${site.url}/files/${id}` };
   }
   const cid = await pinataUpload(file, name);

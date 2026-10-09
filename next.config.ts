@@ -5,8 +5,12 @@ const nextConfig: NextConfig = {
   // Cache Components would require Suspense around every server fetch; not worth it here.
   cacheComponents: false,
   poweredByHeader: false,
-  // Server-only packages with native or dynamic requires stay out of the bundle.
-  serverExternalPackages: ["ioredis"],
+  // deploy/build.sh builds into .next-build (keeping its cache) and the service runs a copy in .next-live.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Loaded from node_modules at runtime instead of bundled, to keep server
+  // builds small on a 1 GB machine. Not pump-sdk: its ESM build only works
+  // bundled (it imports a named export from CommonJS @coral-xyz/anchor).
+  serverExternalPackages: ["ioredis", "@solana/web3.js", "@solana/spl-token", "@supabase/supabase-js", "bn.js"],
   turbopack: {
     rules: {
       "*.css": {

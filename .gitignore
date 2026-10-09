@@ -40,3 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 !.env.example
+/.next-build/
+/.next-live/
+/.next-live.new/
+/.next-live.old/

@@ -11,7 +11,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ name: stri
   const m = name.match(/^[0-9a-f]{64}\.(png|jpg|gif|webp|json)$/);
   if (!dir || !m) return new Response("Not found", { status: 404 });
   try {
-    const body = await readFile(path.join(dir, name));
+    const body = await readFile(path.join(/*turbopackIgnore: true*/ dir, name));
     return new Response(body, {
       headers: { "Content-Type": TYPES[m[1]], "Cache-Control": "public, max-age=31536000, immutable", "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" },
     });
