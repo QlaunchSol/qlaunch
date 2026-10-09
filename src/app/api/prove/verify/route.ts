@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { REGISTRATION_LEAF, bytesToHex, isPqAddress, proveDigest, signatureFromBase64, verify } from "@/lib/pq";
 import { rateLimit, take } from "@/lib/server/cache";
-import { burnLeaf, db, identityByAddress, ok, publicIdentity } from "@/lib/server/db";
+import { burnLeaf, identityByAddress, insertProof, publicIdentity } from "@/lib/server/db";
 import { bad, clientIp, readJson, route } from "@/lib/server/http";
 import { text } from "@/lib/server/validate";
 
@@ -29,8 +29,6 @@ export const POST = route(async (request) => {
   const digestHex = bytesToHex(digest);
   const id = randomBytes(9).toString("base64url");
   await burnLeaf({ identityId: identity.id, leaf: signature.leaf, purpose: "prove", digest: digestHex, ref: id });
-  ok(
-    await db().from("proofs").insert({ id, identity_id: identity.id, pq_address: address, leaf: signature.leaf, challenge, note, digest: digestHex, signature: String(body.signature) }),
-  );
+  await insertProof({ id, identity_id: identity.id, pq_address: address, leaf: signature.leaf, challenge, note, digest: digestHex, signature: String(body.signature) });
   return Response.json({ id }, { status: 201 });
 });

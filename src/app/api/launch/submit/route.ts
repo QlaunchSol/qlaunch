@@ -1,6 +1,6 @@
 import { PUMP_PROGRAM_ID } from "@pump-fun/pump-sdk";
 import { rateLimit } from "@/lib/server/cache";
-import { db, maybe, type LaunchRow } from "@/lib/server/db";
+import { launchByMint } from "@/lib/server/db";
 import { bad, clientIp, readJson, route } from "@/lib/server/http";
 import { curveExists, markLive } from "@/lib/server/launch";
 import { refreshCoins } from "@/lib/server/market";
@@ -17,7 +17,7 @@ export const POST = route(async (request) => {
   await rateLimit(`submit:${clientIp(request)}`, 60, 3600);
   const body = await readJson(request, 8_000);
   const mint = pubkey(body.mint, "mint");
-  const launch = maybe(await db().from("launches").select("*").eq("mint", mint).maybeSingle<LaunchRow>()) ?? bad("Unknown launch", 404);
+  const launch = (await launchByMint(mint)) ?? bad("Unknown launch", 404);
   if (launch.status === "live") return Response.json({ mint, status: "live", signature: launch.tx_signature });
 
   let signature: string | null = null;

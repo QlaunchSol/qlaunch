@@ -41,6 +41,9 @@ if [ $status -ne 0 ]; then
 fi
 [ $SWAP -eq 1 ] || exit 0
 
+# Database schema first (each migration runs once), so new code never meets an old schema.
+(set -a; . ./.env.production; set +a; node_modules/.bin/tsx scripts/migrate.mts)
+
 # Swap in: copy everything but the build cache, then restart (a few seconds of downtime).
 rm -rf .next-live.new
 rsync -a --exclude cache .next-build/ .next-live.new/

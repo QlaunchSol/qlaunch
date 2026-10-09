@@ -15,7 +15,7 @@ import {
   verify,
 } from "@/lib/pq";
 import { rateLimit } from "@/lib/server/cache";
-import { burnLeaf, check, db, identityByWallet, type IdentityRow } from "@/lib/server/db";
+import { burnLeaf, identityByWallet, insertIdentity } from "@/lib/server/db";
 import { bad, clientIp, readJson, route } from "@/lib/server/http";
 import { identityDetail } from "@/lib/server/identity";
 import { pubkey } from "@/lib/server/validate";
@@ -55,23 +55,18 @@ export const POST = route(async (request) => {
   const digest = registrationDigest(statement);
   if (!verify(digest, pqSig, identity).valid) bad("Post-quantum signature doesn't verify against this identity");
 
-  const insert = await db()
-    .from("identities")
-    .insert({
+  const row =
+    (await insertIdentity({
       wallet,
       pq_address: address,
-      root: body.root,
-      pub_seed: body.pubSeed,
+      root: body.root as string,
+      pub_seed: body.pubSeed as string,
       height: 8,
       epoch,
       statement,
       wallet_signature: String(body.walletSignature),
       registration_signature: String(body.signature),
-    })
-    .select("*")
-    .single<IdentityRow>();
-  if (insert.error?.code === "23505") bad("This wallet or identity is already registered", 409);
-  const row = check(insert);
+    })) ?? bad("This wallet or identity is already registered", 409);
   await burnLeaf({ identityId: row.id, leaf: REGISTRATION_LEAF, purpose: "register", digest: bytesToHex(digest), ref: wallet });
   return Response.json(await identityDetail(row), { status: 201 });
 });

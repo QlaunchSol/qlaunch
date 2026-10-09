@@ -5,7 +5,8 @@ import { PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
 import { coinUrl, site } from "@/config/site";
 import { PROTOCOL, type LaunchFields } from "@/lib/pq";
-import { db, maybe, ok, type IdentityRow, type LaunchRow } from "./db";
+import { setLive, type IdentityRow } from "./db";
+import { emitLaunch } from "./events";
 import { env } from "./env";
 import { LAMPORTS_PER_SOL, connection, pumpSdk, pumpState } from "./solana";
 import { bad } from "./http";
@@ -76,13 +77,5 @@ export async function curveExists(mint: string): Promise<boolean> {
 }
 
 export async function markLive(mint: string, txSignature: string | null) {
-  const row = maybe(await db().from("launches").select("status").eq("mint", mint).maybeSingle<Pick<LaunchRow, "status">>());
-  if (!row || row.status === "live") return;
-  ok(
-    await db()
-      .from("launches")
-      .update({ status: "live", tx_signature: txSignature, launched_at: new Date().toISOString() })
-      .eq("mint", mint)
-      .neq("status", "live"),
-  );
+  if (await setLive(mint, txSignature)) emitLaunch(mint);
 }

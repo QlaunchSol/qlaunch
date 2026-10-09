@@ -1,4 +1,5 @@
 import { rateLimit } from "@/lib/server/cache";
+import { configured } from "@/lib/server/env";
 import { bad, clientIp, route } from "@/lib/server/http";
 import { pinFile } from "@/lib/server/pinata";
 
@@ -16,6 +17,7 @@ function sniff(b: Uint8Array): { type: string; ext: string } | null {
 
 /** POST multipart {file} → {url} on our IPFS gateway. */
 export const POST = route(async (request) => {
+  if (!configured.pinata()) bad("Image uploads aren't configured on this server yet.", 503);
   await rateLimit(`upload:${clientIp(request)}`, 20, 3600);
   const length = Number(request.headers.get("content-length") ?? 0);
   if (length > MAX_BYTES + 64_000) bad("Image must be 4 MB or smaller", 413);

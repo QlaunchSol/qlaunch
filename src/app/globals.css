@@ -96,11 +96,6 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Reown modal above our sticky header. */
-w3m-modal {
-  z-index: 60;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

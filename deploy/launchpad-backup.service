@@ -1,0 +1,7 @@
+[Unit]
+Description=Launchpad database backup
+
+[Service]
+Type=oneshot
+User=deploy
+ExecStart=/home/deploy/launchpad/deploy/backup.sh

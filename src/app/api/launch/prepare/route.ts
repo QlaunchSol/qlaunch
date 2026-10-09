@@ -1,6 +1,6 @@
 import { REGISTRATION_LEAF, bytesToHex, launchDigest, signatureFromBase64, verify, type LaunchFields } from "@/lib/pq";
 import { rateLimit } from "@/lib/server/cache";
-import { burnLeaf, check, db, identityByWallet, maybe, ok, publicIdentity, type LaunchRow } from "@/lib/server/db";
+import { burnLeaf, identityByWallet, insertLaunch, launchByMint, publicIdentity, setDevBuy } from "@/lib/server/db";
 import { bad, clientIp, readJson, route } from "@/lib/server/http";
 import { MAX_DEV_BUY_SOL, buildLaunchTx, curveExists, launchMetadata } from "@/lib/server/launch";
 import { isGatewayUrl, pinJson } from "@/lib/server/pinata";
@@ -38,7 +38,7 @@ export const POST = route(async (request) => {
   if (body.digest !== digest) bad("The launch details changed after signing. Sign again.");
   if (!verify(launchDigest(fields), signature, publicIdentity(identity)).valid) bad("The post-quantum signature doesn't verify against your identity");
 
-  const existing = maybe(await db().from("launches").select("*").eq("mint", mint).maybeSingle<LaunchRow>());
+  const existing = await launchByMint(mint);
   if (existing && (existing.identity_id !== identity.id || existing.digest !== digest)) bad("That mint is already taken", 409);
   if (existing?.status === "live") bad("This coin is already live", 409);
   if (!existing && (await curveExists(mint))) bad("That mint already exists on pump.fun", 409);
@@ -49,7 +49,7 @@ export const POST = route(async (request) => {
   if (!uri) {
     const signatureB64 = String(body.signature);
     uri = (await pinJson(launchMetadata(fields, identity, digest, signatureB64), `${symbol}.json`)).url;
-    const insert = await db().from("launches").insert({
+    const inserted = await insertLaunch({
       mint,
       identity_id: identity.id,
       creator: wallet,
@@ -66,12 +66,10 @@ export const POST = route(async (request) => {
       digest,
       signature: signatureB64,
       dev_buy_sol: devBuySol,
-      status: "pending",
     });
-    if (insert.error?.code === "23505") bad("This launch is already being prepared. Refresh and try again.", 409);
-    ok(insert);
+    if (!inserted) bad("This launch is already being prepared. Refresh and try again.", 409);
   } else if (existing && Number(existing.dev_buy_sol) !== devBuySol) {
-    ok(await db().from("launches").update({ dev_buy_sol: devBuySol, status: "pending" }).eq("mint", mint));
+    await setDevBuy(mint, devBuySol);
   }
 
   const tx = await buildLaunchTx({ wallet, mint, name, symbol, uri, devBuySol });

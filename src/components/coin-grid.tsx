@@ -3,7 +3,6 @@
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
-import { browserSupabase } from "@/lib/client/supabase";
 import type { Coin, CoinList } from "@/lib/types";
 import { CoinCard } from "./coin-card";
 import { Button, ButtonLink, Tabs, inputClass } from "./ui";
@@ -74,24 +73,18 @@ export function CoinGrid({ initial }: { initial: CoinList | null }) {
     };
   }, [url, page]);
 
-  // New coins appear live at the top of the "new" view.
+  // New coins appear live at the top of the "new" view, pushed by our own server.
   useEffect(() => {
-    const sb = browserSupabase();
-    if (!sb || sort !== "new" || graduated || debounced) return;
-    const channel = sb
-      .channel("launches-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "launches", filter: "status=eq.live" }, async (payload) => {
-        const mint = (payload.new as { mint?: string })?.mint;
-        if (!mint) return;
-        const res = await api<{ coin: Coin | null }>(`/api/token/${mint}`).catch(() => null);
-        if (!res?.coin) return;
-        setCoins((prev) => (prev.some((c) => c.mint === mint) ? prev : [res.coin!, ...prev]));
-        setFresh((prev) => new Set(prev).add(mint));
-      })
-      .subscribe();
-    return () => {
-      sb.removeChannel(channel);
-    };
+    if (sort !== "new" || graduated || debounced || typeof EventSource === "undefined") return;
+    const source = new EventSource("/api/launches/stream");
+    source.addEventListener("launch", async (e) => {
+      const mint = (e as MessageEvent<string>).data;
+      const res = await api<{ coin: Coin | null }>(`/api/token/${mint}`).catch(() => null);
+      if (!res?.coin) return;
+      setCoins((prev) => (prev.some((c) => c.mint === mint) ? prev : [res.coin!, ...prev]));
+      setFresh((prev) => new Set(prev).add(mint));
+    });
+    return () => source.close();
   }, [sort, graduated, debounced]);
 
   const empty = !loading && coins.length === 0;

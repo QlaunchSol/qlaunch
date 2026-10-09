@@ -1,6 +1,6 @@
 import "server-only";
-import type { IdentityDetail, IdentityJson, IdentityLaunch } from "@/lib/types";
-import { check, db, usedLeaves, type IdentityRow } from "./db";
+import type { IdentityDetail, IdentityJson } from "@/lib/types";
+import { launchesOfIdentity, usedLeaves, type IdentityRow } from "./db";
 
 /** The public view of an identity: everything here is already public by design. */
 export function identityJson(row: IdentityRow): IdentityJson {
@@ -20,15 +20,6 @@ export function identityJson(row: IdentityRow): IdentityJson {
 }
 
 export async function identityDetail(row: IdentityRow): Promise<IdentityDetail> {
-  const [leaves, launches] = await Promise.all([
-    usedLeaves(row.id),
-    db()
-      .from("launches")
-      .select("mint, name, symbol, image_url, leaf, status, created_at, launched_at")
-      .eq("identity_id", row.id)
-      .order("created_at", { ascending: false })
-      .limit(100)
-      .then((r) => check(r) as IdentityLaunch[]),
-  ]);
-  return { identity: identityJson(row), usedLeaves: leaves, launches };
+  const [leaves, launches] = await Promise.all([usedLeaves(row.id), launchesOfIdentity(row.id)]);
+  return { identity: identityJson(row), usedLeaves: [...leaves], launches: [...launches] };
 }

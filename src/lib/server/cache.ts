@@ -7,18 +7,25 @@ import { bad } from "./http";
  * Redis when REDIS_URL is set, otherwise a process-local map. One process
  * serves the site, so the fallback is correct, just not shared across restarts.
  */
-let client: Redis | null | undefined;
+// Process-wide state on globalThis: Next.js compiles routes separately, and a
+// challenge stored by one route must be visible to the route that checks it.
+const g = globalThis as typeof globalThis & {
+  __redis?: Redis | null;
+  __cache?: Map<string, { value: string; expires: number }>;
+  __inflight?: Map<string, Promise<unknown>>;
+};
+
 function redis(): Redis | null {
-  if (client !== undefined) return client;
+  if (g.__redis !== undefined) return g.__redis;
   const url = env.redisUrl();
-  if (!url) return (client = null);
-  client = new Redis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false, lazyConnect: false });
+  if (!url) return (g.__redis = null);
+  const client = new Redis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false, lazyConnect: false });
   client.on("error", (e) => console.warn("redis:", e.message));
-  return client;
+  return (g.__redis = client);
 }
 
-const local = new Map<string, { value: string; expires: number }>();
-const inflight = new Map<string, Promise<unknown>>();
+const local = (g.__cache ??= new Map());
+const inflight = (g.__inflight ??= new Map());
 
 async function getRaw(key: string): Promise<string | null> {
   const r = redis();

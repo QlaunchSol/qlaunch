@@ -1,7 +1,7 @@
 import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { anchorMemo } from "@/lib/pq";
 import { rateLimit } from "@/lib/server/cache";
-import { check, db, identityByWallet, type IdentityRow } from "@/lib/server/db";
+import { identityByWallet, setAnchor } from "@/lib/server/db";
 import { bad, clientIp, readJson, route } from "@/lib/server/http";
 import { identityDetail } from "@/lib/server/identity";
 import { MEMO_PROGRAM_ID, getTransaction } from "@/lib/server/solana";
@@ -47,13 +47,7 @@ export const POST = route(async (request) => {
   );
   if (!memoOnChain || keys[0] !== wallet) bad("The memo on chain doesn't match this identity");
 
-  const updated = check(
-    await db()
-      .from("identities")
-      .update({ anchor_tx: signature, anchor_slot: landed.slot, anchored_at: landed.blockTime ? new Date(landed.blockTime * 1000).toISOString() : new Date().toISOString() })
-      .eq("id", identity.id)
-      .select("*")
-      .single<IdentityRow>(),
-  );
+  const at = landed.blockTime ? new Date(landed.blockTime * 1000).toISOString() : new Date().toISOString();
+  const updated = await setAnchor(identity.id, signature, landed.slot, at);
   return Response.json(await identityDetail(updated));
 });

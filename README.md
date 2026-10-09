@@ -12,13 +12,13 @@ Built and run on one small machine (1 GB RAM, 1 vCPU).
 
 ```
 src/lib/pq/          the protocol: WOTS+, Merkle identities, addresses, messages, key derivation
-src/lib/server/      Supabase, Solana/pump.fun, storage, market data, rate limits, jobs
-src/lib/client/      wallet (Reown AppKit), identity context, in-browser coin verification
-src/app/api/         identity, launch, prove, token, launches, upload routes
-src/components/      UI
-supabase/migrations  database schema (RLS on; writes only through the server)
-scripts/             verify.py (independent verifier), e2e test, LiteSVM fork, lookup-table setup
-deploy/              build.sh, capped.sh, systemd unit, Caddyfile, local Supabase stand-in
+src/lib/server/      Postgres (db.ts holds every query), Solana/pump.fun, IPFS, market data, live feed, jobs
+src/lib/client/      wallet (Wallet Standard), identity context, in-browser coin verification
+src/app/api/         identity, launch, prove, token, launches (+ live stream), upload routes
+src/components/      UI, including the wallet connect dialog
+db/migrations        database schema, applied by scripts/migrate.mts
+scripts/             verify.py, e2e test, LiteSVM fork, lookup-table setup, migrate, moderate
+deploy/              build.sh, capped.sh, postgres.sh, backup.sh + timer, systemd unit, Caddyfile
 ```
 
 ## Configuration
@@ -28,17 +28,19 @@ values are inlined at build time: rebuild after changing them. Everything
 else is read at runtime: restart after changing it
 (`sudo systemctl restart launchpad`).
 
-| Service | Variables | Needed for |
-|---|---|---|
-| Helius | `HELIUS_RPC_URL` | reliable RPC (falls back to the rate-limited public RPC) |
-| Supabase | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | everything stateful; the anon key powers the live coin feed |
-| Pinata | `PINATA_JWT`, `PINATA_GATEWAY` | IPFS for coin images and metadata |
-| Reown | `NEXT_PUBLIC_PROJECT_ID` | WalletConnect wallets (browser extensions work without it) |
-| Treasury | `TREASURY_ADDRESS` | on-chain creator of every coin: receives pump.fun creator fees |
-| Lookup table | `LOOKUP_TABLE_ADDRESS` | launches with a dev buy (see below) |
-| Birdeye | `BIRDEYE_API_KEY` | optional: holder counts, chart fallback |
+Everything runs on this machine except three outside services:
 
-Apply the schema once in the Supabase SQL editor: `supabase/migrations/0001_init.sql`.
+| Service | Variables | Why it can't be in-house |
+|---|---|---|
+| Solana RPC (e.g. Helius) | `HELIUS_RPC_URL` | an RPC node needs hundreds of GB of RAM; free tiers suffice. Helius also enables holder counts |
+| Pinata (IPFS) | `PINATA_JWT`, `PINATA_GATEWAY` | coin images and metadata (with the attestation) must outlive this server, and we don't host user uploads |
+| A domain | `NEXT_PUBLIC_SITE_URL`, Caddyfile | coin metadata links are written on-chain forever |
+
+Free, keyless data: DexScreener (volume, graduated prices), GeckoTerminal (charts, SOL price fallback), Jupiter (SOL price).
+In-house: PostgreSQL (`deploy/postgres.sh`, schema via `scripts/migrate.mts`), the live coin feed (server-sent events), wallet
+connections (Wallet Standard: browser extensions, in-wallet browsers, Mobile Wallet Adapter on Android), Redis cache.
+
+Also set `TREASURY_ADDRESS` (receives pump.fun creator fees) and, for dev buys, `LOOKUP_TABLE_ADDRESS`.
 
 ### Lookup table
 
@@ -60,7 +62,8 @@ deploy/build.sh
 Builds in a memory-capped systemd unit (550 MB RAM, overflow to swap) so a
 build can never take the machine down, writes to `.next-build` (keeping
 Turbopack's cache: cold ~5 min, incremental ~30 s), then swaps the result
-into `.next-live` and restarts the `launchpad` service (~2 s of downtime).
+into `.next-live`, applies pending database migrations and restarts the
+`launchpad` service (~2 s of downtime).
 Run other heavy commands the same way: `deploy/capped.sh npx tsc --noEmit`.
 Never run `next build` directly on a 1 GB machine.
 
@@ -86,9 +89,9 @@ deploy/capped.sh bash -c 'set -a; . ./.env.production; set +a; SEND=fork \
 
 Drop `SEND=fork` to send for real on devnet (the wallet needs devnet SOL).
 
-## Staging without accounts
+## Operations
 
-`deploy/local-supabase.sh` stands up Postgres + PostgREST behind the same
-URL shape supabase-js expects, and `LOCAL_STORAGE_DIR` stores uploads on this
-server instead of IPFS. Both are for testing; production uses Supabase and
-Pinata.
+- **Backups:** `launchpad-backup.timer` dumps the database nightly to `~/backups` (14 kept). Copy them off the machine now and
+  then; restore with `pg_restore -d "$DATABASE_URL" --clean <file>`.
+- **Moderation:** `scripts/moderate.mts hide <mint>` removes a coin from this site (it stays on pump.fun); `show` undoes it.
+- **Logs:** `journalctl -u launchpad -f`.

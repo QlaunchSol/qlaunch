@@ -1,43 +1,39 @@
 "use client";
 
-import { useAppKit, useAppKitAccount, useAppKitProvider, useDisconnect } from "@reown/appkit/react";
-import type { Provider } from "@reown/appkit-adapter-solana/react";
+import { useWallet as useAdapter } from "@solana/wallet-adapter-react";
 import type { VersionedTransaction } from "@solana/web3.js";
 import { useCallback } from "react";
+import { useWalletModal } from "@/components/wallet-modal";
 
 /** The connected Solana wallet, reduced to what the app needs. */
 export function useWallet() {
-  const { address, isConnected, status } = useAppKitAccount({ namespace: "solana" });
-  const { walletProvider } = useAppKitProvider<Provider>("solana");
-  const { open } = useAppKit();
-  const { disconnect } = useDisconnect();
+  const { publicKey, connected, connecting, signMessage: adapterSignMessage, signTransaction: adapterSignTransaction, disconnect } = useAdapter();
+  const modal = useWalletModal();
 
   const signMessage = useCallback(
     async (message: string): Promise<Uint8Array> => {
-      if (!walletProvider) throw new Error("Connect a wallet first");
-      const sig = await walletProvider.signMessage(new TextEncoder().encode(message));
-      // Some wallets hand back {signature}; normalize.
-      const bytes = sig instanceof Uint8Array ? sig : (sig as unknown as { signature: Uint8Array }).signature;
-      if (!(bytes instanceof Uint8Array) || bytes.length !== 64) throw new Error("The wallet returned an unexpected signature");
-      return bytes;
+      if (!adapterSignMessage) throw new Error("This wallet can't sign messages. Try Phantom, Solflare or Backpack.");
+      const sig = await adapterSignMessage(new TextEncoder().encode(message));
+      if (!(sig instanceof Uint8Array) || sig.length !== 64) throw new Error("The wallet returned an unexpected signature");
+      return sig;
     },
-    [walletProvider],
+    [adapterSignMessage],
   );
 
   const signTransaction = useCallback(
     async (tx: VersionedTransaction): Promise<VersionedTransaction> => {
-      if (!walletProvider) throw new Error("Connect a wallet first");
-      return walletProvider.signTransaction(tx);
+      if (!adapterSignTransaction) throw new Error("Connect a wallet first");
+      return adapterSignTransaction(tx);
     },
-    [walletProvider],
+    [adapterSignTransaction],
   );
 
   return {
-    address: isConnected && address ? address : null,
-    connecting: status === "connecting" || status === "reconnecting",
-    connect: () => open({ view: "Connect", namespace: "solana" }),
-    openAccount: () => open({ view: "Account" }),
-    disconnect: () => disconnect({ namespace: "solana" }),
+    address: connected && publicKey ? publicKey.toBase58() : null,
+    connecting,
+    connect: modal.open,
+    openAccount: modal.open,
+    disconnect: () => disconnect().catch(() => {}),
     signMessage,
     signTransaction,
   };

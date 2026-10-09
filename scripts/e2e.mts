@@ -11,7 +11,7 @@
  * SEND=fork runs without SOL: transactions execute in a local LiteSVM fork of
  * the cluster instead of being sent (real pump.fun bytecode and accounts),
  * and the harness then marks the launch live in the database itself
- * (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / TREASURY_ADDRESS from the env).
+ * (DATABASE_URL / TREASURY_ADDRESS from the env).
  */
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -20,6 +20,7 @@ import { crc32, deflateSync } from "node:zlib";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { Connection, Keypair, LAMPORTS_PER_SOL, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
+import postgres from "postgres";
 import { bytesToHex, fromBase64, toBase64, utf8ToBytes } from "../src/lib/pq/bytes.ts";
 import { deriveSeed, generateIdentity, mintSecret, sign } from "../src/lib/pq/keys.ts";
 import { launchDigest, proveDigest, registrationDigest, registrationStatement, seedMessage } from "../src/lib/pq/messages.ts";
@@ -140,7 +141,12 @@ async function main() {
   const form = new FormData();
   form.append("file", new Blob([png()], { type: "image/png" }), "coin.png");
   const up = await fetch(`${BASE}/api/upload`, { method: "POST", body: form }).then(async (r) => ({ status: r.status, json: await r.json() }));
-  ok(up.status === 200 && up.json.url, `image stored at ${up.json.url ?? up.json.error}`);
+  if (up.status === 503) {
+    console.log(`  - uploads not configured (${up.json.error}): launch tests need Pinata. Stopping here.`);
+    console.log(failures ? `\n${failures} FAILED` : "\npassed (partial: no storage configured)");
+    process.exit(failures ? 1 : 0);
+  }
+  ok(up.status === 200 && up.json.url, `image pinned at ${up.json.url ?? up.json.error}`);
   const bogus = new FormData();
   bogus.append("file", new Blob([Buffer.from("<script>alert(1)</script>".repeat(10))], { type: "image/png" }), "x.png");
   const bogusUp = await fetch(`${BASE}/api/upload`, { method: "POST", body: bogus });
@@ -186,12 +192,10 @@ async function main() {
       ok(BigInt(curve.realQuoteReserves.toString()) > 0n, `dev buy landed in the curve: ${Number(curve.realQuoteReserves.toString()) / 1e9} SOL`);
     }
     // The harness, not the app, marks it live: nothing landed on the real cluster.
-    const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/launches?mint=eq.${fields.mint}`, {
-      method: "PATCH",
-      headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "live", launched_at: new Date().toISOString() }),
-    });
-    ok(res.ok, "marked live (fork mode)");
+    const db = postgres(process.env.DATABASE_URL!, { max: 1 });
+    const updated = await db`update launches set status = 'live', launched_at = now() where mint = ${fields.mint} returning mint`;
+    await db.end();
+    ok(updated.length === 1, "marked live (fork mode)");
     const pending = await call("/api/launch/submit", { mint: fields.mint });
     ok(pending.json?.status === "live", "submit reports live");
   } else {

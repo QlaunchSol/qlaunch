@@ -1,13 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import "server-only";
 import { cached } from "./cache";
-import { check, db, identityByAddress, maybe, type CoinRow } from "./db";
+import { coinByMint, coinPage, counts, identityByAddress, type CoinRow } from "./db";
 import type { Coin, CoinList, PlatformStats, TokenDetail } from "@/lib/types";
 import { identityJson } from "./identity";
 
-export const SORTS = { new: "launched_at", mcap: "market_cap_usd", volume: "volume_24h_usd", holders: "holders" } as const;
-export type Sort = keyof typeof SORTS;
-export const isSort = (v: unknown): v is Sort => typeof v === "string" && v in SORTS;
+const SORTS = ["new", "mcap", "volume", "holders"] as const;
+export type Sort = (typeof SORTS)[number];
+export const isSort = (v: unknown): v is Sort => SORTS.includes(v as Sort);
 export const PAGE_SIZE = 24;
 
 export function coinJson(c: CoinRow): Coin {
@@ -39,52 +38,24 @@ export function coinJson(c: CoinRow): Coin {
 export function listCoins(p: { sort: Sort; graduated: boolean; q: string; page: number }): Promise<CoinList> {
   const key = `coins:${p.sort}:${p.graduated ? 1 : 0}:${p.page}:${p.q.toLowerCase()}`;
   return cached(key, 10_000, async () => {
-    let query = db().from("coins").select("*");
-    if (p.graduated) query = query.eq("complete", true);
-    if (p.q) {
-      const q = p.q.replace(/[%_,()*\\]/g, "");
-      query = q.length >= 32 ? query.or(`mint.eq.${q},pq_address.eq.${q},creator.eq.${q}`) : query.or(`name.ilike.%${q}%,symbol.ilike.%${q}%`);
-    }
-    const rows = check(
-      await query
-        .order(SORTS[p.sort], { ascending: false, nullsFirst: false })
-        .order("launched_at", { ascending: false })
-        .range(p.page * PAGE_SIZE, p.page * PAGE_SIZE + PAGE_SIZE),
-    ) as CoinRow[];
+    const rows = await coinPage({ sort: p.sort, graduated: p.graduated, q: p.q, offset: p.page * PAGE_SIZE, limit: PAGE_SIZE + 1 });
     return { coins: rows.slice(0, PAGE_SIZE).map(coinJson), hasMore: rows.length > PAGE_SIZE };
   });
 }
 
-async function count(table: string, apply?: (q: any) => any): Promise<number> {
-  let q = db().from(table).select("*", { count: "exact", head: true });
-  if (apply) q = apply(q);
-  const { count: n, error } = await q;
-  if (error) throw new Error(`db: ${error.message}`);
-  return n ?? 0;
-}
-
 export function platformStats(): Promise<PlatformStats> {
-  return cached("stats:platform", 30_000, async () => {
-    const [identities, launches, keysSpent, anchored] = await Promise.all([
-      count("identities"),
-      count("launches", (q) => q.eq("status", "live")),
-      count("leaf_uses"),
-      count("identities", (q) => q.not("anchor_tx", "is", null)),
-    ]);
-    return { identities, launches, keysSpent, anchored };
-  });
+  return cached("stats:platform", 30_000, counts);
 }
 
 /** A coin page's data: the coin, its attestation and the creator's identity. */
 export async function tokenDetail(mint: string): Promise<TokenDetail> {
   const found = await cached<TokenDetail | null>(`token:${mint}`, 10_000, async () => {
-    const coin = maybe(await db().from("coins").select("*").eq("mint", mint).maybeSingle<CoinRow>());
+    const coin = await coinByMint(mint);
     if (!coin) return null; // not cached: a coin that just went live shows up at once
-    const launch = check(await db().from("launches").select("digest, signature").eq("mint", mint).single<{ digest: string; signature: string }>());
     const identity = await identityByAddress(coin.pq_address);
     return {
       coin: coinJson(coin),
-      attestation: { digest: launch.digest, signature: launch.signature },
+      attestation: { digest: coin.digest, signature: coin.signature },
       identity: identity ? identityJson(identity) : null,
     };
   });
