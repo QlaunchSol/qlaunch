@@ -24,6 +24,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
         <Providers>
+          {site.cluster === "devnet" && (
+            <div className="border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-center text-xs text-warn">
+              Devnet staging: coins, SOL and fees here are test tokens with no value. Switch your wallet to devnet to try it.
+            </div>
+          )}
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />

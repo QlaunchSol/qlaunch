@@ -7,8 +7,14 @@
  *   WALLET=/path/to/devnet-wallet.json npx tsx scripts/e2e.mts
  *
  * The wallet file is created (and airdropped devnet SOL) if missing.
+ *
+ * SEND=fork runs without SOL: transactions execute in a local LiteSVM fork of
+ * the cluster instead of being sent (real pump.fun bytecode and accounts),
+ * and the harness then marks the launch live in the database itself
+ * (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / TREASURY_ADDRESS from the env).
  */
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { crc32, deflateSync } from "node:zlib";
 import { ed25519 } from "@noble/curves/ed25519.js";
@@ -18,12 +24,17 @@ import { bytesToHex, fromBase64, toBase64, utf8ToBytes } from "../src/lib/pq/byt
 import { deriveSeed, generateIdentity, mintSecret, sign } from "../src/lib/pq/keys.ts";
 import { launchDigest, proveDigest, registrationDigest, registrationStatement, seedMessage } from "../src/lib/pq/messages.ts";
 import { signatureToBase64 } from "../src/lib/pq/signature.ts";
+import { executeOnFork } from "./svm.mts";
+
+// pump-sdk's ESM build only works bundled; its CommonJS build loads fine in Node.
+const pump = createRequire(import.meta.url)("@pump-fun/pump-sdk");
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3000";
 const RPC = process.env.RPC_URL ?? "https://api.devnet.solana.com";
 const SITE = process.env.SITE_NAME ?? "Hashmint";
 const WALLET = process.env.WALLET ?? "/tmp/e2e-wallet.json";
 const PASSPHRASE = "e2e correct horse battery";
+const FORK = process.env.SEND === "fork";
 
 let failures = 0;
 const ok = (cond: unknown, what: string) => {
@@ -73,7 +84,7 @@ async function main() {
   console.log(`wallet ${addr}`);
 
   let balance = await conn.getBalance(kp.publicKey);
-  if (balance < 0.3 * LAMPORTS_PER_SOL) {
+  if (!FORK && balance < 0.3 * LAMPORTS_PER_SOL) {
     console.log("requesting devnet airdrop…");
     const sig = await conn.requestAirdrop(kp.publicKey, LAMPORTS_PER_SOL);
     await conn.confirmTransaction(sig, "confirmed");
@@ -116,8 +127,13 @@ async function main() {
     ok(prep.status === 200 && prep.json.transaction, `anchor transaction built (${prep.status} ${prep.json?.error ?? ""})`);
     const tx = VersionedTransaction.deserialize(fromBase64(prep.json.transaction));
     tx.sign([kp]);
-    const anchored = await call("/api/identity/anchor", { wallet: addr, transaction: toBase64(tx.serialize()) });
-    ok(anchored.status === 200 && anchored.json?.identity?.anchor?.slot, `anchored in slot ${anchored.json?.identity?.anchor?.slot} (${anchored.status} ${anchored.json?.error ?? ""})`);
+    if (FORK) {
+      const run = await executeOnFork(RPC, tx, [kp.publicKey]);
+      ok(run.ok && run.logs.some((l) => l.includes(`anchor:${keys.address}:${root}`)), `anchor memo executes on the fork (${run.error ?? `${run.computeUnits} CU`})`);
+    } else {
+      const anchored = await call("/api/identity/anchor", { wallet: addr, transaction: toBase64(tx.serialize()) });
+      ok(anchored.status === 200 && anchored.json?.identity?.anchor?.slot, `anchored in slot ${anchored.json?.identity?.anchor?.slot} (${anchored.status} ${anchored.json?.error ?? ""})`);
+    }
   } else ok(true, "already anchored");
 
   console.log("upload");
@@ -145,6 +161,10 @@ async function main() {
 
   const prep = await call("/api/launch/prepare", body);
   ok(prep.status === 200 && prep.json.transaction, `launch prepared with key #${leaf} (${prep.status} ${prep.json?.error ?? ""})`);
+  if (!prep.json?.transaction) {
+    console.log(`\n${failures} FAILED (cannot continue without a launch transaction)`);
+    process.exit(1);
+  }
   const retry = await call("/api/launch/prepare", body);
   ok(retry.status === 200, `retrying the identical launch reuses its key (${retry.status} ${retry.json?.error ?? ""})`);
   const reuseDigest = launchDigest({ ...fields, name: "Reuse attempt" });
@@ -153,12 +173,35 @@ async function main() {
 
   const tx = VersionedTransaction.deserialize(fromBase64(prep.json.transaction));
   tx.sign([kp, mint]);
-  let sub = await call("/api/launch/submit", { mint: fields.mint, transaction: toBase64(tx.serialize()) });
-  for (let i = 0; sub.json?.status !== "live" && i < 20; i++) {
-    await new Promise((r) => setTimeout(r, 3000));
-    sub = await call("/api/launch/submit", { mint: fields.mint });
+  if (FORK) {
+    const run = await executeOnFork(RPC, tx, [kp.publicKey]);
+    ok(run.ok, `create_v2 + dev buy executes on the fork (${run.error ?? `${run.computeUnits} CU`})`);
+    if (!run.ok) console.log(run.logs.slice(-15).join("\n"));
+    const curvePk = pump.bondingCurvePda(mint.publicKey);
+    const data = run.account(curvePk);
+    ok(data && run.owner(curvePk) === pump.PUMP_PROGRAM_ID.toBase58(), "bonding curve account created, owned by pump.fun");
+    if (data) {
+      const curve = pump.PUMP_SDK.decodeBondingCurve({ data: Buffer.from(data), owner: pump.PUMP_PROGRAM_ID, lamports: 0, executable: false });
+      ok(curve.creator.toBase58() === process.env.TREASURY_ADDRESS, `on-chain creator is the treasury (${curve.creator.toBase58()})`);
+      ok(BigInt(curve.realQuoteReserves.toString()) > 0n, `dev buy landed in the curve: ${Number(curve.realQuoteReserves.toString()) / 1e9} SOL`);
+    }
+    // The harness, not the app, marks it live: nothing landed on the real cluster.
+    const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/launches?mint=eq.${fields.mint}`, {
+      method: "PATCH",
+      headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "live", launched_at: new Date().toISOString() }),
+    });
+    ok(res.ok, "marked live (fork mode)");
+    const pending = await call("/api/launch/submit", { mint: fields.mint });
+    ok(pending.json?.status === "live", "submit reports live");
+  } else {
+    let sub = await call("/api/launch/submit", { mint: fields.mint, transaction: toBase64(tx.serialize()) });
+    for (let i = 0; sub.json?.status !== "live" && i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      sub = await call("/api/launch/submit", { mint: fields.mint });
+    }
+    ok(sub.json?.status === "live", `coin live: ${fields.mint} (${sub.json?.signature ?? sub.json?.error})`);
   }
-  ok(sub.json?.status === "live", `coin live: ${fields.mint} (${sub.json?.signature ?? sub.json?.error})`);
 
   console.log("read back");
   const token = await call(`/api/token/${fields.mint}`);
@@ -192,6 +235,11 @@ async function main() {
   ok(proof.json?.proof?.leaf === pleaf, "proof readable");
 
   console.log("market data");
+  if (FORK) {
+    console.log("  (skipped in fork mode: the coin isn't on the real cluster)");
+    console.log(failures ? `\n${failures} FAILED` : "\nall passed");
+    process.exit(failures ? 1 : 0);
+  }
   const listed = (await call(`/api/launches?sort=mcap`)).json?.coins?.find((c: { mint: string }) => c.mint === fields.mint);
   ok(listed && listed.marketCapUsd > 0, `market cap from the bonding curve: $${listed?.marketCapUsd?.toFixed(2)}, progress ${listed?.progress}`);
 

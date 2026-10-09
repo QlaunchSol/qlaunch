@@ -23,7 +23,8 @@ export const POST = route(async (request) => {
 
   if (!body.transaction) {
     const ix = new TransactionInstruction({ programId: MEMO_PROGRAM_ID, keys: [{ pubkey: new PublicKey(wallet), isSigner: true, isWritable: false }], data: Buffer.from(memo, "utf8") });
-    const tx = await buildTx(new PublicKey(wallet), [ix], 20_000);
+    // The Memo program costs ~66k CU for this 145-byte memo (measured on a mainnet fork).
+    const tx = await buildTx(new PublicKey(wallet), [ix], 100_000);
     return Response.json({ transaction: toBase64(tx), memo });
   }
 

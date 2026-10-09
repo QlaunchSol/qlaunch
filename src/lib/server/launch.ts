@@ -8,7 +8,9 @@ import { PROTOCOL, type LaunchFields } from "@/lib/pq";
 import { db, maybe, ok, type IdentityRow, type LaunchRow } from "./db";
 import { env } from "./env";
 import { LAMPORTS_PER_SOL, connection, pumpSdk, pumpState } from "./solana";
-import { buildTx } from "./tx";
+import { bad } from "./http";
+import { launchLookupTable } from "./lookup";
+import { compileTx } from "./tx";
 
 export const MAX_DEV_BUY_SOL = 20;
 
@@ -49,14 +51,23 @@ export async function buildLaunchTx(p: { wallet: string; mint: string; name: str
   const mint = new PublicKey(p.mint);
   const creator = new PublicKey(env.treasury());
   const base = { mint, name: p.name, symbol: p.symbol, uri: p.uri, creator, user, mayhemMode: false };
+  const table = await launchLookupTable();
+  const tables = table ? [table] : [];
   if (p.devBuySol <= 0) {
-    return buildTx(user, [await pumpSdk.createV2Instruction(base)], 200_000);
+    return (await compileTx(user, [await pumpSdk.createV2Instruction(base)], 200_000, tables)) ?? bad("Transaction too large");
   }
   const { global, feeConfig } = await pumpState();
   const solAmount = new BN(Math.round(p.devBuySol * LAMPORTS_PER_SOL));
   const amount = getBuyTokenAmountFromSolAmount({ global, feeConfig, mintSupply: null, bondingCurve: null, amount: solAmount, quoteMint: NATIVE_MINT });
   const ixs = await pumpSdk.createV2AndBuyInstructions({ ...base, global, amount, solAmount });
-  return buildTx(user, ixs, 350_000);
+  const tx = await compileTx(user, ixs, 350_000, tables);
+  if (tx) return tx;
+  return bad(
+    table
+      ? "This launch doesn't fit in one transaction. Try a shorter name or ticker."
+      : "Dev buys aren't available yet on this server (it needs its lookup table configured). Launch without a dev buy, or try again later.",
+    table ? 400 : 503,
+  );
 }
 
 /** The coin exists once its bonding curve account does. */

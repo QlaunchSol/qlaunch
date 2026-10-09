@@ -6,6 +6,7 @@ import {
   SendTransactionError,
   TransactionMessage,
   VersionedTransaction,
+  type AddressLookupTableAccount,
   type TransactionInstruction,
 } from "@solana/web3.js";
 import { bad } from "./http";
@@ -13,7 +14,8 @@ import { connection, recentBlockhash } from "./solana";
 
 export const PRIORITY_MICROLAMPORTS = 200_000;
 
-export async function buildTx(payer: PublicKey, instructions: TransactionInstruction[], computeUnits: number): Promise<VersionedTransaction> {
+/** Compiles a v0 transaction; returns null when it exceeds the 1,232-byte packet limit. */
+export async function compileTx(payer: PublicKey, instructions: TransactionInstruction[], computeUnits: number, tables: AddressLookupTableAccount[] = []): Promise<VersionedTransaction | null> {
   const { blockhash } = await recentBlockhash();
   const message = new TransactionMessage({
     payerKey: payer,
@@ -23,10 +25,17 @@ export async function buildTx(payer: PublicKey, instructions: TransactionInstruc
       ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_MICROLAMPORTS }),
       ...instructions,
     ],
-  }).compileToV0Message();
+  }).compileToV0Message(tables);
   const tx = new VersionedTransaction(message);
-  if (tx.serialize().length > 1232) bad("Transaction too large");
-  return tx;
+  try {
+    return tx.serialize().length <= 1232 ? tx : null;
+  } catch {
+    return null; // serialize() throws past the limit
+  }
+}
+
+export async function buildTx(payer: PublicKey, instructions: TransactionInstruction[], computeUnits: number): Promise<VersionedTransaction> {
+  return (await compileTx(payer, instructions, computeUnits)) ?? bad("Transaction too large");
 }
 
 export const toBase64 = (tx: VersionedTransaction) => Buffer.from(tx.serialize()).toString("base64");

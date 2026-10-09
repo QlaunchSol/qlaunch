@@ -142,7 +142,7 @@ def main(argv):
         if "/coin/" in src:  # a coin page: ask the site for the metadata URI
             mint = src.rstrip("/").split("/")[-1]
             api = src.split("/coin/")[0] + f"/api/token/{mint}"
-            src = json.load(urllib.request.urlopen(api))["launch"]["metadataUri"]
+            src = json.load(urllib.request.urlopen(api))["coin"]["metadataUri"]
         meta = json.load(urllib.request.urlopen(src))
     else:
         meta = json.load(open(src))
