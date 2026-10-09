@@ -5,10 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { coinUrl, explorerAccount, explorerTx, pumpUrl } from "@/config/site";
 import { api } from "@/lib/client/api";
-import { ago, count, price, usd } from "@/lib/format";
+import { count, price, usd } from "@/lib/format";
 import type { TokenDetail } from "@/lib/types";
 import { CoinImage } from "./coin-image";
 import { PriceChart } from "./price-chart";
+import { TimeAgo } from "./time-ago";
 import { VerifyPanel } from "./verify-panel";
 import { Badge, ButtonLink, CopyButton, Hash, Notice, Panel, PanelHeader, Progress, Stat } from "./ui";
 
@@ -52,7 +53,7 @@ export function CoinView({ initial }: { initial: TokenDetail }) {
             <span className="flex items-center gap-1">
               mint <Hash value={coin.mint} href={explorerAccount(coin.mint)} />
             </span>
-            <span>launched {ago(coin.launchedAt)}</span>
+            <TimeAgo iso={coin.launchedAt} prefix="launched " />
             {coin.twitter && (
               <a href={coin.twitter} target="_blank" rel="noreferrer" className="hover:text-fg">
                 X ↗

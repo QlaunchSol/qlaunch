@@ -7,7 +7,7 @@ import { explorerTx, site } from "@/config/site";
 import { walletErrorMessage } from "@/lib/client/api";
 import { useIdentity } from "@/lib/client/identity";
 import { useWallet } from "@/lib/client/wallet";
-import { ago } from "@/lib/format";
+import { TimeAgo } from "./time-ago";
 import { bytesToHex } from "@/lib/pq";
 import { CoinImage } from "./coin-image";
 import { KeyGrid } from "./key-grid";
@@ -166,7 +166,7 @@ function RegisteredView() {
         <Panel>
           <PanelHeader
             title="Your post-quantum identity"
-            sub={`Registered ${ago(identity.createdAt)}`}
+            sub={<TimeAgo iso={identity.createdAt} prefix="Registered " />}
             right={
               keys ? (
                 <Button variant="secondary" size="sm" onClick={lock}>

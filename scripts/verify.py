@@ -125,6 +125,13 @@ def from_metadata(meta: dict) -> bool:
     return ok
 
 
+def fetch_json(url: str):
+    # Some IPFS gateways refuse Python's default User-Agent; say who we are.
+    req = urllib.request.Request(url, headers={"User-Agent": "qlaunch-verify/1.0", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as res:
+        return json.load(res)
+
+
 def main(argv):
     if len(argv) == 3 and argv[1] == "--vectors":
         vectors = json.load(open(argv[2]))
@@ -142,8 +149,8 @@ def main(argv):
         if "/coin/" in src:  # a coin page: ask the site for the metadata URI
             mint = src.rstrip("/").split("/")[-1]
             api = src.split("/coin/")[0] + f"/api/token/{mint}"
-            src = json.load(urllib.request.urlopen(api))["coin"]["metadataUri"]
-        meta = json.load(urllib.request.urlopen(src))
+            src = fetch_json(api)["coin"]["metadataUri"]
+        meta = fetch_json(src)
     else:
         meta = json.load(open(src))
     sys.exit(0 if from_metadata(meta) else 1)

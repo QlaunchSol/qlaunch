@@ -20,7 +20,6 @@ export function CoinGrid({ initial }: { initial: CoinList | null }) {
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
-  const [now, setNow] = useState(() => Date.now());
   const first = useRef(Boolean(initial));
 
   useEffect(() => {
@@ -56,21 +55,16 @@ export function CoinGrid({ initial }: { initial: CoinList | null }) {
     load(0, false);
   }, [load]);
 
-  // Market numbers refresh every 20s; the clock for "ago" every 10s.
+  // Market numbers refresh every 20s.
   useEffect(() => {
     const t = setInterval(() => {
-      setNow(Date.now());
       if (page === 0 && document.visibilityState === "visible") {
         api<CoinList>(url(0))
           .then((res) => setCoins((prev) => [...res.coins, ...prev.slice(res.coins.length)]))
           .catch(() => {});
       }
     }, 20_000);
-    const clock = setInterval(() => setNow(Date.now()), 10_000);
-    return () => {
-      clearInterval(t);
-      clearInterval(clock);
-    };
+    return () => clearInterval(t);
   }, [url, page]);
 
   // New coins appear live at the top of the "new" view, pushed by our own server.
@@ -132,7 +126,7 @@ export function CoinGrid({ initial }: { initial: CoinList | null }) {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {coins.map((c) => (
-            <CoinCard key={c.mint} coin={c} now={now} fresh={fresh.has(c.mint)} />
+            <CoinCard key={c.mint} coin={c} fresh={fresh.has(c.mint)} />
           ))}
           {loading &&
             coins.length === 0 &&

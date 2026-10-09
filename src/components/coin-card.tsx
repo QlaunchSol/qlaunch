@@ -1,11 +1,12 @@
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { ago, count, short, usd } from "@/lib/format";
+import { count, short, usd } from "@/lib/format";
 import type { Coin } from "@/lib/types";
 import { CoinImage } from "./coin-image";
+import { TimeAgo } from "./time-ago";
 import { Progress } from "./ui";
 
-export function CoinCard({ coin, now, fresh }: { coin: Coin; now: number; fresh?: boolean }) {
+export function CoinCard({ coin, fresh }: { coin: Coin; fresh?: boolean }) {
   return (
     <Link
       href={`/coin/${coin.mint}`}
@@ -43,14 +44,18 @@ export function CoinCard({ coin, now, fresh }: { coin: Coin; now: number; fresh?
         {coin.complete ? (
           <div className="flex items-center justify-between text-[11px]">
             <span className="rounded-full border border-mint/30 bg-mint/10 px-2 py-0.5 font-medium text-mint">Graduated</span>
-            <span className="text-faint">{ago(coin.launchedAt, now)}</span>
+            <span className="text-faint">
+              <TimeAgo iso={coin.launchedAt} />
+            </span>
           </div>
         ) : (
           <div className="space-y-1">
             <Progress value={coin.progress ?? 0} />
             <div className="flex justify-between text-[11px] text-faint">
               <span className="tabular">{Math.round((coin.progress ?? 0) * 100)}% bonded</span>
-              <span>{ago(coin.launchedAt, now)}</span>
+              <span>
+                <TimeAgo iso={coin.launchedAt} />
+              </span>
             </div>
           </div>
         )}
