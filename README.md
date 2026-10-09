@@ -1,4 +1,4 @@
-# qlaunch
+# Qlaunch
 
 **Launch coins that outlive the curve.** [qlaunch.xyz](https://qlaunch.xyz) · [How it works](https://qlaunch.xyz/docs) · [@QlaunchSol](https://x.com/QlaunchSol)
 
@@ -7,7 +7,7 @@ launcher, over the coin's mint, name, ticker, image and description, pinned into
 
 Solana addresses *are* ed25519 public keys. When a quantum computer (or a classical break) defeats the curve, any
 wallet signature can be forged, and with it any claim about who launched what. Hash-based signatures rest on
-SHA-256 alone, which Grover's algorithm only weakens from 256 to ~128 bits. qlaunch gives each creator a
+SHA-256 alone, which Grover's algorithm only weakens from 256 to ~128 bits. Qlaunch gives each creator a
 hash-based identity now, while ed25519 can still vouch for it, and signs every launch with it.
 
 ## How it works
@@ -41,7 +41,7 @@ Both implementations are checked against the same test vectors (`scripts/vectors
 - **Protects:** proof of who launched a coin, after a curve break; identity ownership via a challenge-response that
   never touches ed25519; one-time key reuse, which the database refuses.
 - **Doesn't protect:** funds. SOL and tokens in ordinary Solana accounts are guarded by ed25519 alone.
-- **Creator fees:** every coin's on-chain creator is the qlaunch treasury, so pump.fun creator fees go to it, not to
+- **Creator fees:** every coin's on-chain creator is the Qlaunch treasury, so pump.fun creator fees go to it, not to
   the launcher. The launch form says so before you sign.
 
 ---

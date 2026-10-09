@@ -4,7 +4,7 @@
  * NOT (see PROTOCOL in lib/pq/params.ts): renaming must never change keys.
  */
 export const site = {
-  name: process.env.NEXT_PUBLIC_SITE_NAME || "qlaunch",
+  name: process.env.NEXT_PUBLIC_SITE_NAME || "Qlaunch",
   url: (process.env.NEXT_PUBLIC_SITE_URL || "https://qlaunch.xyz").replace(/\/$/, ""),
   tagline: "Launch coins that outlive the curve.",
   description:
