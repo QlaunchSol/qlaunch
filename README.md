@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hashmint (placeholder name)
 
-## Getting Started
+A pump.fun launchpad where every coin carries a post-quantum attestation: a
+hash-based WOTS+ one-time signature by the launcher, over the coin's mint,
+name, ticker, image and description, pinned into the coin's metadata.
+Anyone can verify it with nothing but SHA-256. The full protocol is at
+`/docs` on the running site.
 
-First, run the development server:
+Built and run on one small machine (1 GB RAM, 1 vCPU).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Layout
+
+```
+src/lib/pq/          the protocol: WOTS+, Merkle identities, addresses, messages, key derivation
+src/lib/server/      Supabase, Solana/pump.fun, storage, market data, rate limits, jobs
+src/lib/client/      wallet (Reown AppKit), identity context, in-browser coin verification
+src/app/api/         identity, launch, prove, token, launches, upload routes
+src/components/      UI
+supabase/migrations  database schema (RLS on; writes only through the server)
+scripts/             verify.py (independent verifier), e2e test, LiteSVM fork, lookup-table setup
+deploy/              build.sh, capped.sh, systemd unit, Caddyfile, local Supabase stand-in
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Configuration
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Copy `.env.example` to `.env.production` and fill it in. `NEXT_PUBLIC_*`
+values are inlined at build time: rebuild after changing them. Everything
+else is read at runtime: restart after changing it
+(`sudo systemctl restart launchpad`).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Service | Variables | Needed for |
+|---|---|---|
+| Helius | `HELIUS_RPC_URL` | reliable RPC (falls back to the rate-limited public RPC) |
+| Supabase | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | everything stateful; the anon key powers the live coin feed |
+| Pinata | `PINATA_JWT`, `PINATA_GATEWAY` | IPFS for coin images and metadata |
+| Reown | `NEXT_PUBLIC_PROJECT_ID` | WalletConnect wallets (browser extensions work without it) |
+| Treasury | `TREASURY_ADDRESS` | on-chain creator of every coin: receives pump.fun creator fees |
+| Lookup table | `LOOKUP_TABLE_ADDRESS` | launches with a dev buy (see below) |
+| Birdeye | `BIRDEYE_API_KEY` | optional: holder counts, chart fallback |
 
-## Learn More
+Apply the schema once in the Supabase SQL editor: `supabase/migrations/0001_init.sql`.
 
-To learn more about Next.js, take a look at the following resources:
+### Lookup table
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+A launch with a dev buy names 26 accounts and doesn't fit Solana's
+1,232-byte limit without an address lookup table. Create one per cluster,
+once (about 0.006 SOL), then set `LOOKUP_TABLE_ADDRESS`:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+RPC_URL=$HELIUS_RPC_URL TREASURY_ADDRESS=… npx tsx scripts/create-lookup-table.mts --dry-run
+RPC_URL=$HELIUS_RPC_URL TREASURY_ADDRESS=… PAYER=payer.json npx tsx scripts/create-lookup-table.mts --freeze
+```
 
-## Deploy on Vercel
+## Build and deploy (on this machine)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+deploy/build.sh
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Builds in a memory-capped systemd unit (550 MB RAM, overflow to swap) so a
+build can never take the machine down, writes to `.next-build` (keeping
+Turbopack's cache: cold ~5 min, incremental ~30 s), then swaps the result
+into `.next-live` and restarts the `launchpad` service (~2 s of downtime).
+Run other heavy commands the same way: `deploy/capped.sh npx tsc --noEmit`.
+Never run `next build` directly on a 1 GB machine.
+
+Caddy serves HTTPS (`deploy/Caddyfile` → `/etc/caddy/Caddyfile`). For a real
+domain, point its A record here and replace the hostname in the Caddyfile and
+`NEXT_PUBLIC_SITE_URL`.
+
+## Tests
+
+```bash
+deploy/capped.sh npx vitest run                                   # protocol unit tests
+python3 -I scripts/verify.py --vectors scripts/vectors/launch.json   # independent verifier vs. vectors
+```
+
+End-to-end, against a running server, with no SOL needed: transactions run
+in a LiteSVM fork of the cluster with pump.fun's real program:
+
+```bash
+deploy/capped.sh bash -c 'set -a; . ./.env.production; set +a; SEND=fork \
+  BASE_URL=http://127.0.0.1:3000 RPC_URL=https://api.mainnet-beta.solana.com \
+  WALLET=/path/to/test-wallet.json npx tsx scripts/e2e.mts'
+```
+
+Drop `SEND=fork` to send for real on devnet (the wallet needs devnet SOL).
+
+## Staging without accounts
+
+`deploy/local-supabase.sh` stands up Postgres + PostgREST behind the same
+URL shape supabase-js expects, and `LOCAL_STORAGE_DIR` stores uploads on this
+server instead of IPFS. Both are for testing; production uses Supabase and
+Pinata.
