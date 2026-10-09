@@ -114,3 +114,4 @@ for (let i = 0; i < addresses.length; i += 20) {
 }
 if (FREEZE) console.log(`frozen: ${await send(payer, [AddressLookupTableProgram.freezeLookupTable({ lookupTable: table, authority: payer.publicKey })])}`);
 console.log(`\nLOOKUP_TABLE_ADDRESS=${table.toBase58()}`);
+process.exit(0); // web3.js leaves a confirmation websocket open
