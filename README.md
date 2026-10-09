@@ -1,10 +1,52 @@
 # qlaunch
 
-A pump.fun launchpad where every coin carries a post-quantum attestation: a
-hash-based WOTS+ one-time signature by the launcher, over the coin's mint,
-name, ticker, image and description, pinned into the coin's metadata.
-Anyone can verify it with nothing but SHA-256. The full protocol is at
-`/docs` on the running site.
+**Launch coins that outlive the curve.** [qlaunch.xyz](https://qlaunch.xyz) · [How it works](https://qlaunch.xyz/docs) · [@QlaunchSol](https://x.com/QlaunchSol)
+
+A pump.fun launchpad where every coin carries a post-quantum attestation: a hash-based one-time signature by its
+launcher, over the coin's mint, name, ticker, image and description, pinned into the coin's own IPFS metadata.
+
+Solana addresses *are* ed25519 public keys. When a quantum computer (or a classical break) defeats the curve, any
+wallet signature can be forged, and with it any claim about who launched what. Hash-based signatures rest on
+SHA-256 alone, which Grover's algorithm only weakens from 256 to ~128 bits. qlaunch gives each creator a
+hash-based identity now, while ed25519 can still vouch for it, and signs every launch with it.
+
+## How it works
+
+| Step | What happens |
+|---|---|
+| **Derive** | Your wallet signs a fixed message; that deterministic signature (plus an optional scrypt-stretched passphrase) seeds 256 WOTS+ one-time keys, generated in your browser. Nothing secret leaves the tab. |
+| **Register** | The keys form a Merkle tree; its root is your post-quantum public key, its hash your `pq1…` address. Your wallet and one-time key #0 sign the same statement, binding the two both ways. |
+| **Anchor** | An SPL memo timestamps the root on Solana while ed25519 is still trustworthy. |
+| **Launch** | A fresh one-time key signs the coin. It's created on pump.fun's bonding curve in one transaction, the attestation inside its metadata. |
+| **Verify** | Anyone rebuilds the digest from public fields, walks 67 hash chains and 8 tree levels, and compares with the root. The coin page does it in your browser. |
+
+Parameters: WOTS+ with w = 16 over a tweakable SHA-256 (67 chains), Merkle tree of height 8, 2,404-byte signatures,
+64-byte public keys. The protocol is specified at [qlaunch.xyz/docs](https://qlaunch.xyz/docs) and implemented in
+[`src/lib/pq`](src/lib/pq).
+
+## Verify a coin yourself
+
+[`scripts/verify.py`](scripts/verify.py) is an independent verifier, written apart from the TypeScript and using only
+Python's standard library:
+
+```bash
+curl -O https://qlaunch.xyz/verify.py
+python3 verify.py https://qlaunch.xyz/coin/<mint>
+```
+
+Both implementations are checked against the same test vectors (`scripts/vectors/`).
+
+## What it protects, and what it doesn't
+
+- **Protects:** proof of who launched a coin, after a curve break; identity ownership via a challenge-response that
+  never touches ed25519; one-time key reuse, which the database refuses.
+- **Doesn't protect:** funds. SOL and tokens in ordinary Solana accounts are guarded by ed25519 alone.
+- **Creator fees:** every coin's on-chain creator is the qlaunch treasury, so pump.fun creator fees go to it, not to
+  the launcher. The launch form says so before you sign.
+
+---
+
+The rest of this file is for running it.
 
 Built and run on one small machine (1 GB RAM, 1 vCPU).
 
@@ -95,3 +137,7 @@ Drop `SEND=fork` to send for real on devnet (the wallet needs devnet SOL).
   then; restore with `pg_restore -d "$DATABASE_URL" --clean <file>`.
 - **Moderation:** `scripts/moderate.mts hide <mint>` removes a coin from this site (it stays on pump.fun); `show` undoes it.
 - **Logs:** `journalctl -u launchpad -f`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
