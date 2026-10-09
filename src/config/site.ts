@@ -4,8 +4,8 @@
  * NOT (see PROTOCOL in lib/pq/params.ts): renaming must never change keys.
  */
 export const site = {
-  name: process.env.NEXT_PUBLIC_SITE_NAME || "Hashmint",
-  url: (process.env.NEXT_PUBLIC_SITE_URL || "https://2-29-22-94.sslip.io").replace(/\/$/, ""),
+  name: process.env.NEXT_PUBLIC_SITE_NAME || "qlaunch",
+  url: (process.env.NEXT_PUBLIC_SITE_URL || "https://qlaunch.xyz").replace(/\/$/, ""),
   tagline: "Launch coins that outlive the curve.",
   description:
     "A pump.fun launchpad where every coin is attested by a hash-based, post-quantum one-time signature. WOTS+ keys, Merkle identities, on-chain anchors.",

@@ -1,6 +1,5 @@
-# Replace the hostname once a real domain points here; Caddy fetches the certificate itself.
-2-29-22-94.sslip.io {
-	encode zstd gzip
+# qlaunch.xyz on this machine. Caddy obtains and renews certificates itself.
+(security_headers) {
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
@@ -9,6 +8,11 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		-Server
 	}
+}
+
+qlaunch.xyz {
+	encode zstd gzip
+	import security_headers
 	@static path /_next/static/*
 	header @static Cache-Control "public, max-age=31536000, immutable"
 	reverse_proxy 127.0.0.1:3000 {
@@ -16,7 +20,11 @@
 	}
 }
 
-# Bare IP: send people to the named host.
-http://2.29.22.94 {
-	redir https://2-29-22-94.sslip.io{uri} permanent
+# Every other way in leads to the canonical host.
+www.qlaunch.xyz, 2-29-22-94.sslip.io {
+	redir https://qlaunch.xyz{uri} permanent
+}
+
+http://2.29.22.94, http://[2a01:4f9:c015:f2b6::1] {
+	redir https://qlaunch.xyz{uri} permanent
 }

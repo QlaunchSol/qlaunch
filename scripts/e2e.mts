@@ -32,7 +32,7 @@ const pump = createRequire(import.meta.url)("@pump-fun/pump-sdk");
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3000";
 const RPC = process.env.RPC_URL ?? "https://api.devnet.solana.com";
-const SITE = process.env.SITE_NAME ?? "Hashmint";
+const SITE = process.env.SITE_NAME ?? "qlaunch";
 const WALLET = process.env.WALLET ?? "/tmp/e2e-wallet.json";
 const PASSPHRASE = "e2e correct horse battery";
 const FORK = process.env.SEND === "fork";

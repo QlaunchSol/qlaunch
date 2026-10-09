@@ -2,7 +2,7 @@ import { cx } from "@/lib/cx";
 
 /**
  * The mark: a Merkle tree read from the bottom, two leaves hashing into one
- * root, drawn as a single stroke. Placeholder brand; swap freely.
+ * root, drawn as a single stroke.
  */
 export function LogoMark({ className }: { className?: string }) {
   return (

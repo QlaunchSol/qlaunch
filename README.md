@@ -1,4 +1,4 @@
-# Hashmint (placeholder name)
+# qlaunch
 
 A pump.fun launchpad where every coin carries a post-quantum attestation: a
 hash-based WOTS+ one-time signature by the launcher, over the coin's mint,
