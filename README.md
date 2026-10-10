@@ -156,6 +156,9 @@ Drop `SEND=fork` to send for real on devnet (the wallet needs devnet SOL).
   `pg_restore --list` before it replaces anything). They live on this machine: copy them elsewhere too. Restore with
   `pg_restore -d "$DATABASE_URL" --clean <file>`. Use the newest dump: restoring an older one forgets one-time keys
   spent since it was taken (browsers still refuse to reuse keys they signed with themselves).
+- **Screening:** with `OPENAI_API_KEY` set, every image (animated ones at three frames) and every launch's name, ticker
+  and description go through OpenAI's moderation model (free). Anything it flags, or that scores 0.2 or more in any
+  category, is refused; if the service can't be reached, publishing waits rather than skipping the check.
 - **Images:** every upload is decoded and re-encoded (no EXIF or GPS, no smuggled payloads, size and frame caps) and pinned
   to IPFS, never stored here. Uploads nobody launches with are unpinned after 6 hours; uploads are capped per visitor
   (30/day) and in total (`UPLOADS_PER_DAY`).

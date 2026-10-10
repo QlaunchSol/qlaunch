@@ -5,6 +5,7 @@ import { blockedImages, insertUpload, uploadBySha, uploadCounts } from "@/lib/se
 import { configured } from "@/lib/server/env";
 import { bad, clientIp, ipHash, readBody, route } from "@/lib/server/http";
 import { sanitizeImage } from "@/lib/server/images";
+import { screenImage } from "@/lib/server/moderation";
 import { pinFile } from "@/lib/server/pinata";
 
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -16,7 +17,7 @@ const PER_DAY = () => Number(process.env.UPLOADS_PER_DAY ?? 300);
  * images.ts) before it is pinned; nothing is stored on this server. Uploads
  * nobody launches with are unpinned after a few hours (jobs.ts), so this
  * can't serve as free image hosting. Images moderation has taken down, and
- * near copies of them, are refused.
+ * near copies of them, are refused; so is anything automated screening flags.
  */
 export const POST = route(async (request) => {
   if (!configured.pinata()) bad("Image uploads aren't configured on this server yet.", 503);
@@ -38,6 +39,7 @@ export const POST = route(async (request) => {
   const sha256 = createHash("sha256").update(clean.bytes).digest("hex");
   const blocked = await blockedImages();
   if (blocked.some((b) => b.sha256 === sha256 || similarImage(b.dhash, clean.dhash))) bad("This image was removed by moderation and can't be used.", 422, "image_blocked");
+  await screenImage(clean.bytes); // refuses anything unsafe (OpenAI moderation)
   const known = await uploadBySha(sha256);
   if (known) return Response.json({ url: known.url, width: clean.width, height: clean.height });
   const pinned = await pinFile(new Blob([new Uint8Array(clean.bytes)], { type: clean.type }), "coin.webp");
