@@ -157,11 +157,12 @@ export async function refreshAll() {
   }
 }
 
+// Candle sizes, each with a few hours to a week of history.
 const RANGES = {
-  "1h": { gt: "minute", aggregate: 1, limit: 60 },
-  "6h": { gt: "minute", aggregate: 5, limit: 72 },
-  "24h": { gt: "minute", aggregate: 15, limit: 96 },
-  "7d": { gt: "hour", aggregate: 1, limit: 168 },
+  "1m": { gt: "minute", aggregate: 1, limit: 180 },
+  "5m": { gt: "minute", aggregate: 5, limit: 144 },
+  "15m": { gt: "minute", aggregate: 15, limit: 96 },
+  "1h": { gt: "hour", aggregate: 1, limit: 168 },
 } as const;
 export type ChartRange = keyof typeof RANGES;
 export const isChartRange = (v: unknown): v is ChartRange => typeof v === "string" && v in RANGES;

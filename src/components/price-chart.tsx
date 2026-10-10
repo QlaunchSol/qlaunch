@@ -7,12 +7,13 @@ import { price } from "@/lib/format";
 import type { Candle } from "@/lib/types";
 import { Tabs } from "./ui";
 
-type Range = "1h" | "6h" | "24h" | "7d";
+/** Candle size. New coins trade in minutes, so 1m is the default. */
+type Range = "1m" | "5m" | "15m" | "1h";
 
 export function PriceChart({ mint }: { mint: string }) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
-  const [range, setRange] = useState<Range>("24h");
+  const [range, setRange] = useState<Range>("1m");
   const [candles, setCandles] = useState<Candle[] | null>(null);
 
   useEffect(() => {
@@ -37,7 +38,8 @@ export function PriceChart({ mint }: { mint: string }) {
       layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#95a2ab", fontFamily: "var(--font-geist-mono)", fontSize: 11, attributionLogo: false },
       grid: { vertLines: { color: "#161d22" }, horzLines: { color: "#161d22" } },
       rightPriceScale: { borderColor: "#1c242a" },
-      timeScale: { borderColor: "#1c242a", timeVisible: true, secondsVisible: false },
+      // Slim candles even when a new coin has only a few: fitContent would otherwise stretch them across the chart.
+      timeScale: { borderColor: "#1c242a", timeVisible: true, secondsVisible: false, maxBarSpacing: 18, rightOffset: 2 },
       crosshair: { vertLine: { color: "#2a353d" }, horzLine: { color: "#2a353d" } },
       localization: { priceFormatter: (p: number) => price(p) },
     });
@@ -65,14 +67,14 @@ export function PriceChart({ mint }: { mint: string }) {
         <Tabs
           value={range}
           onChange={setRange}
-          options={(["1h", "6h", "24h", "7d"] as const).map((r) => ({ value: r, label: r }))}
+          options={(["1m", "5m", "15m", "1h"] as const).map((r) => ({ value: r, label: r }))}
         />
       </div>
       <div className="relative h-72">
         {candles === null && <div className="absolute inset-0 animate-pulse rounded-lg bg-panel-2" />}
         {candles?.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center rounded-lg border border-dashed border-line-2 text-xs text-faint">
-            No trades in this range yet. Charts appear once the coin is indexed.
+            No trades yet. The chart appears a minute or two after the first trade.
           </div>
         )}
         <div ref={box} className="absolute inset-0" />
