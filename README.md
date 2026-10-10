@@ -12,6 +12,8 @@ wallet signature can be forged, and with it any claim about who launched what. H
 SHA-256 alone, which Grover's algorithm only weakens from 256 to ~128 bits. Qlaunch gives each creator a
 hash-based identity now, while ed25519 can still vouch for it, and signs every launch with it.
 
+<p align="center"><img src=".github/screenshot-home.jpg" alt="The Qlaunch home page, verifying a one-time signature live in the browser" width="100%"></p>
+
 ## How it works
 
 | Step | What happens |
@@ -19,7 +21,7 @@ hash-based identity now, while ed25519 can still vouch for it, and signs every l
 | **Derive** | Your wallet signs a fixed message; that deterministic signature (plus an optional scrypt-stretched passphrase) seeds 256 WOTS+ one-time keys, generated in your browser. Nothing secret leaves the tab. |
 | **Register** | The keys form a Merkle tree; its root is your post-quantum public key, its hash your `pq1…` address. Your wallet and one-time key #0 sign the same statement, binding the two both ways. |
 | **Anchor** | An SPL memo timestamps the root on Solana while ed25519 is still trustworthy. |
-| **Launch** | A fresh one-time key signs the coin. It's created on pump.fun's bonding curve in one transaction, the attestation inside its metadata. |
+| **Launch** | A fresh one-time key signs the coin. It's created on pump.fun's bonding curve in one transaction, the attestation inside its metadata, with your wallet as creator: the creator fees are yours. |
 | **Verify** | Anyone rebuilds the digest from public fields, walks 67 hash chains and 8 tree levels, and compares with the root. The coin page does it in your browser. |
 
 Parameters: WOTS+ with w = 16 over a tweakable SHA-256 (67 chains), Merkle tree of height 8, 2,404-byte signatures,
@@ -27,6 +29,10 @@ Parameters: WOTS+ with w = 16 over a tweakable SHA-256 (67 chains), Merkle tree 
 [`src/lib/pq`](src/lib/pq).
 
 ## Verify a coin yourself
+
+Every coin page re-checks its attestation in your browser, from public data, step by step:
+
+<p align="center"><img src=".github/screenshot-verify.jpg" alt="A coin page's post-quantum verification: every check passed" width="100%"></p>
 
 [`scripts/verify.py`](scripts/verify.py) is an independent verifier, written apart from the TypeScript and using only
 Python's standard library:
@@ -40,11 +46,13 @@ Both implementations are checked against the same test vectors (`scripts/vectors
 
 ## What it protects, and what it doesn't
 
+<img src=".github/mascot.jpg" alt="The Qlaunch Q, unbothered while the elliptic curve shatters behind it" width="240" align="right">
+
 - **Protects:** proof of who launched a coin, after a curve break; identity ownership via a challenge-response that
   never touches ed25519; one-time key reuse, which the database refuses.
 - **Doesn't protect:** funds. SOL and tokens in ordinary Solana accounts are guarded by ed25519 alone.
-- **Creator fees:** every coin's on-chain creator is the Qlaunch treasury, so pump.fun creator fees go to it, not to
-  the launcher. The launch form says so before you sign.
+- **Creator fees:** yours. The launching wallet is every coin's on-chain creator, so pump.fun pays its creator fees to
+  the launcher. Your browser refuses any transaction that names someone else, and Qlaunch charges no fee of its own.
 
 ---
 
@@ -84,7 +92,7 @@ Free, keyless data: DexScreener (volume, graduated prices), GeckoTerminal (chart
 In-house: PostgreSQL (`deploy/postgres.sh`, schema via `scripts/migrate.mts`), the live coin feed (server-sent events), wallet
 connections (Wallet Standard: browser extensions, in-wallet browsers, Mobile Wallet Adapter on Android), Redis cache.
 
-Also set `TREASURY_ADDRESS` (receives pump.fun creator fees) and, for dev buys, `LOOKUP_TABLE_ADDRESS`.
+For dev buys, also set `LOOKUP_TABLE_ADDRESS`.
 
 ### Lookup table
 
@@ -93,8 +101,8 @@ A launch with a dev buy names 26 accounts and doesn't fit Solana's
 once (about 0.006 SOL), then set `LOOKUP_TABLE_ADDRESS`:
 
 ```bash
-RPC_URL=$HELIUS_RPC_URL TREASURY_ADDRESS=… npx tsx scripts/create-lookup-table.mts --dry-run
-RPC_URL=$HELIUS_RPC_URL TREASURY_ADDRESS=… PAYER=payer.json npx tsx scripts/create-lookup-table.mts --freeze
+RPC_URL=$HELIUS_RPC_URL npx tsx scripts/create-lookup-table.mts --dry-run
+RPC_URL=$HELIUS_RPC_URL PAYER=payer.json npx tsx scripts/create-lookup-table.mts --freeze
 ```
 
 ## Build and deploy (on this machine)

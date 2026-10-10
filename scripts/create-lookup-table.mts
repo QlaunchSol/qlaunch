@@ -2,12 +2,12 @@
  * Creates the address lookup table that lets a launch with a dev buy fit in
  * one transaction, and prints the LOOKUP_TABLE_ADDRESS to configure.
  *
- *   RPC_URL=… TREASURY_ADDRESS=… npx tsx scripts/create-lookup-table.mts --dry-run
- *   RPC_URL=… TREASURY_ADDRESS=… PAYER=~/payer.json npx tsx scripts/create-lookup-table.mts [--freeze]
+ *   RPC_URL=… npx tsx scripts/create-lookup-table.mts --dry-run
+ *   RPC_URL=… PAYER=~/payer.json npx tsx scripts/create-lookup-table.mts [--freeze]
  *
  * The table holds the accounts every SOL launch shares: pump.fun's global
- * state, fee config and recipients, event authority, the treasury's creator
- * vault, system and token programs. They're found by building sample launches
+ * state, fee config and recipients, event authority, system and token
+ * programs (each launcher's own creator vault differs, so it isn't included). They're found by building sample launches
  * for random mints and wallets and keeping what they all have in common, so
  * the list follows the SDK instead of being hard-coded. --freeze makes the
  * table permanent and immutable (recommended once it works). Costs about
@@ -31,7 +31,6 @@ import BN from "bn.js";
 
 const pump = createRequire(import.meta.url)("@pump-fun/pump-sdk");
 const RPC = process.env.RPC_URL ?? "https://api.mainnet-beta.solana.com";
-const TREASURY = new PublicKey(process.env.TREASURY_ADDRESS ?? "");
 const DRY = process.argv.includes("--dry-run");
 const FREEZE = process.argv.includes("--freeze");
 const conn = new Connection(RPC, "confirmed");
@@ -49,7 +48,7 @@ async function sampleLaunch(): Promise<{ ixs: TransactionInstruction[]; user: Pu
     name: "x".repeat(32),
     symbol: "X".repeat(10),
     uri: "https://example.com/" + "a".repeat(80),
-    creator: TREASURY,
+    creator: user,
     user,
     amount,
     solAmount,

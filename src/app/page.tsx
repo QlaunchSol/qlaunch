@@ -47,6 +47,12 @@ export default async function Home() {
                 How it works
               </ButtonLink>
             </div>
+            <p className="mt-4 flex items-center gap-2 text-sm text-muted">
+              <span className="size-1.5 rounded-full bg-mint" aria-hidden />
+              <span>
+                <span className="text-fg">Creator fees go to you.</span> {site.name} takes no fee.
+              </span>
+            </p>
             <dl className="mt-10 grid max-w-lg grid-cols-3 gap-6 border-t border-line pt-6">
               <div>
                 <dt className="text-[11px] uppercase tracking-wider text-faint">Signature</dt>

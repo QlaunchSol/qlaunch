@@ -11,7 +11,7 @@
  * SEND=fork runs without SOL: transactions execute in a local LiteSVM fork of
  * the cluster instead of being sent (real pump.fun bytecode and accounts),
  * and the harness then marks the launch live in the database itself
- * (DATABASE_URL / TREASURY_ADDRESS from the env).
+ * (DATABASE_URL from the env).
  */
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -200,7 +200,7 @@ async function main() {
     ok(data && run.owner(curvePk) === pump.PUMP_PROGRAM_ID.toBase58(), "bonding curve account created, owned by pump.fun");
     if (data) {
       const curve = pump.PUMP_SDK.decodeBondingCurve({ data: Buffer.from(data), owner: pump.PUMP_PROGRAM_ID, lamports: 0, executable: false });
-      ok(curve.creator.toBase58() === process.env.TREASURY_ADDRESS, `on-chain creator is the treasury (${curve.creator.toBase58()})`);
+      ok(curve.creator.toBase58() === kp.publicKey.toBase58(), `on-chain creator is the launcher, who gets the creator fees (${curve.creator.toBase58()})`);
       ok(BigInt(curve.realQuoteReserves.toString()) > 0n, `dev buy landed in the curve: ${Number(curve.realQuoteReserves.toString()) / 1e9} SOL`);
     }
     // The harness, not the app, marks it live: nothing landed on the real cluster.

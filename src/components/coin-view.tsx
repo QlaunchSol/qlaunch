@@ -3,7 +3,7 @@
 import { ExternalLink, PartyPopper, ShieldCheck } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { coinUrl, explorerAccount, explorerTx, pumpUrl, site } from "@/config/site";
+import { coinUrl, explorerAccount, explorerTx, pumpProfileUrl, pumpUrl, site } from "@/config/site";
 import { api } from "@/lib/client/api";
 import type { Verdict } from "@/lib/client/verify-coin";
 import { count, price, usd } from "@/lib/format";
@@ -37,6 +37,13 @@ export function CoinView({ initial }: { initial: TokenDetail }) {
       {launched && (
         <Notice tone="ok" title={<span className="flex items-center gap-2"><PartyPopper className="size-4" /> Your coin is live</span>}>
           Share it: <span className="font-mono text-fg">{coinUrl(coin.mint)}</span> <CopyButton value={coinUrl(coin.mint)} />
+          <div className="mt-1">
+            Creator fees from every trade go to your wallet: claim them on{" "}
+            <a href={pumpProfileUrl(coin.creator)} target="_blank" rel="noreferrer" className="text-mint hover:underline">
+              your pump.fun profile
+            </a>
+            .
+          </div>
         </Notice>
       )}
 
@@ -119,7 +126,7 @@ export function CoinView({ initial }: { initial: TokenDetail }) {
               </dd>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
-              <dt className="text-faint">Wallet</dt>
+              <dt className="text-faint">Creator wallet (receives the creator fees)</dt>
               <dd>
                 <Hash value={coin.creator} href={explorerAccount(coin.creator)} />
               </dd>

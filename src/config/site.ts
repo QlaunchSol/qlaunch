@@ -16,5 +16,7 @@ export const site = {
 
 export const coinUrl = (mint: string) => `${site.url}/coin/${mint}`;
 export const pumpUrl = (mint: string) => `https://pump.fun/coin/${mint}`;
+/** Where a creator claims their creator fees. */
+export const pumpProfileUrl = (wallet: string) => `https://pump.fun/profile/${wallet}`;
 export const explorerTx = (sig: string) => `https://solscan.io/tx/${sig}${site.cluster === "devnet" ? "?cluster=devnet" : ""}`;
 export const explorerAccount = (addr: string) => `https://solscan.io/account/${addr}${site.cluster === "devnet" ? "?cluster=devnet" : ""}`;

@@ -1,12 +1,14 @@
 import type { VersionedTransaction } from "@solana/web3.js";
+import bs58 from "bs58";
 
 /**
  * Checks the launch transaction the server built BEFORE the wallet signs it,
  * so not even a compromised server can slip in a different name, ticker or
  * metadata, a bigger buy, a large priority fee, or an extra instruction. It
  * must contain only: compute-budget settings, pump.fun's create_v2 with exactly
- * the signed details, the launcher's token account, and (with a dev buy) one
- * pump.fun buy capped at the amount the user chose.
+ * the signed details and the launcher as creator (so creator fees are theirs),
+ * the launcher's token account, and (with a dev buy) one pump.fun buy capped
+ * at the amount the user chose.
  */
 const PUMP = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
@@ -31,6 +33,14 @@ function reader(data: Uint8Array, offset: number) {
       const v = view.getBigUint64(at, true);
       at += 8;
       return v;
+    },
+    bytes(n: number) {
+      const b = data.subarray(at, at + n);
+      at += n;
+      return b;
+    },
+    rest() {
+      return data.subarray(at);
     },
     u32() {
       const v = view.getUint32(at, true);
@@ -71,6 +81,9 @@ export function inspectLaunchTx(tx: VersionedTransaction, e: ExpectedLaunch): vo
       const [name, symbol, uri] = [r.string(), r.string(), r.string()];
       if (name !== e.name || symbol !== e.symbol) fail(`would name the coin “${name}” ($${symbol}) instead of what you signed`);
       if (uri !== e.uri) fail("points the coin at different metadata");
+      if (bs58.encode(r.bytes(32)) !== e.wallet) fail("would send the coin's creator fees to someone else");
+      // mayhem mode, cashback, a custom creator fee rate, holder rewards (which would also take the fees): all off
+      if (r.rest().some((b) => b !== 0)) fail("turns on unexpected coin options");
       if (!ix.accountKeyIndexes.some((i) => keys[i] === e.mint)) fail("creates a different coin");
     } else if (program === PUMP && startsWith(data, BUY)) {
       buys++;

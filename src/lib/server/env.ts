@@ -19,7 +19,6 @@ export const env = {
   databaseUrl: () => required("DATABASE_URL"),
   pinataJwt: () => required("PINATA_JWT"),
   pinataGateway: () => required("PINATA_GATEWAY").replace(/^https?:\/\//, "").replace(/\/$/, ""),
-  treasury: () => required("TREASURY_ADDRESS"),
   redisUrl: () => process.env.REDIS_URL || "",
   adminPassword: () => process.env.ADMIN_PASSWORD || "",
 };
@@ -27,6 +26,5 @@ export const env = {
 export const configured = {
   db: () => Boolean(process.env.DATABASE_URL),
   pinata: () => Boolean(process.env.PINATA_JWT && process.env.PINATA_GATEWAY),
-  treasury: () => Boolean(process.env.TREASURY_ADDRESS),
   helius: () => Boolean(process.env.HELIUS_RPC_URL),
 };

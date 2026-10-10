@@ -142,7 +142,6 @@ export function LaunchView() {
   const [raw, setRaw] = useState({ name: "", symbol: "", description: "", image: "", twitter: "", telegram: "" });
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [devBuy, setDevBuy] = useState("0");
-  const [acknowledged, setAcknowledged] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ mint: string; signature: string | null } | null>(null);
@@ -189,7 +188,7 @@ export function LaunchView() {
   const needed = devBuySol + 0.025;
   const lowBalance = balance !== null && balance < needed;
   const busy = phase !== "idle" && phase !== "done" && phase !== "sent";
-  const canLaunch = Boolean(cleaned.form && !devBuyError && acknowledged && keys && !busy && remaining > 0 && !lowBalance);
+  const canLaunch = Boolean(cleaned.form && !devBuyError && keys && !busy && remaining > 0 && !lowBalance);
 
   /** Polls until chain confirms or rejects the coin; survives server restarts and blips. */
   const awaitLive = useCallback(async (mint: string): Promise<{ status: string; reason?: string }> => {
@@ -306,9 +305,9 @@ export function LaunchView() {
         <Panel>
           <PanelHeader title="Coin details" sub="Everything here is signed. It can't be changed after launch." />
           <div className="space-y-5 p-5">
-            <Notice tone="warn">
-              On {site.name}, every coin&apos;s on-chain creator is the {site.name} treasury, so pump.fun&apos;s creator fees on it go to the treasury, not to you, and
-              pump.fun shows the treasury as the creator. Your wallet signs and pays for the launch, and the post-quantum attestation names you as the launcher.
+            <Notice tone="ok" title="Creator fees are yours">
+              Your wallet is the coin&apos;s creator on pump.fun, so pump.fun pays its creator fees from every trade to you. Claim them on pump.fun any time.{" "}
+              {site.name} takes no fee.
             </Notice>
             <div className="flex flex-col gap-5 sm:flex-row">
               <ImagePicker url={raw.image} onUploaded={(image) => setRaw((r) => ({ ...r, image }))} onPreview={setPreviewSrc} />
@@ -397,6 +396,14 @@ export function LaunchView() {
                     <span>Network and priority fee</span>
                     <span className="font-mono">≈ 0.0001 SOL</span>
                   </li>
+                  <li className="flex justify-between">
+                    <span>{site.name} fee</span>
+                    <span className="font-mono">none</span>
+                  </li>
+                  <li className="flex justify-between text-mint">
+                    <span>Creator fees from trading</span>
+                    <span className="font-mono">to your wallet</span>
+                  </li>
                   {balance !== null && (
                     <li className={cx("flex justify-between border-t border-line pt-1.5", lowBalance ? "text-bad" : "")}>
                       <span>Wallet balance</span>
@@ -404,13 +411,6 @@ export function LaunchView() {
                     </li>
                   )}
                 </ul>
-
-                <label className="flex items-start gap-2.5 rounded-lg border border-warn/25 bg-warn/5 p-3 text-xs text-muted">
-                  <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} className="mt-0.5 accent-mint" />
-                  <span>
-                    I understand that pump.fun&apos;s <span className="text-fg">creator fees on this coin go to the {site.name} treasury</span>, not to my wallet.
-                  </span>
-                </label>
 
                 {phase !== "idle" && phase !== "sent" && (
                   <ol className="space-y-1.5" aria-live="polite">

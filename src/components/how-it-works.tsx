@@ -4,7 +4,7 @@ import Link from "next/link";
 const STEPS = [
   { icon: KeyRound, title: "Derive", body: "Your wallet signs once; 256 hash-based one-time keys are generated from it, in your browser. Nothing secret leaves the tab." },
   { icon: ShieldCheck, title: "Register", body: "Your wallet and key #0 sign the same statement, binding them both ways. Anchor the root on Solana while ed25519 still holds." },
-  { icon: Rocket, title: "Launch", body: "A fresh key signs your coin's name, ticker, image and description. It goes live on pump.fun's curve in one transaction." },
+  { icon: Rocket, title: "Launch", body: "A fresh key signs your coin's name, ticker, image and description. It goes live on pump.fun in one transaction, with you as creator: its fees are yours." },
   { icon: ScanSearch, title: "Verify", body: "Anyone checks the signature with SHA-256 alone: on the coin page, in their browser, or with a dependency-free Python script." },
 ];
 

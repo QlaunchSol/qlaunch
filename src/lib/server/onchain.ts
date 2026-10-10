@@ -10,7 +10,7 @@ export type ChainCheck = { ok: true; signature: string; devTokens: number } | { 
 
 /**
  * What landed on chain must be what was attested, or the coin isn't listed:
- * the curve's creator is the treasury, the mint's own metadata carries the
+ * the curve's creator is the launcher, the mint's own metadata carries the
  * signed name, ticker and metadata URI, and the creation transaction was paid
  * for (and so signed) by the attested launcher. `final: false` means "not
  * there yet, check again"; `final: true` means it never will match.
@@ -22,7 +22,7 @@ export async function verifyLaunchOnChain(launch: LaunchRow, knownSignature?: st
   if (!curveInfo) return { ok: false, final: false, reason: "not on chain yet" };
 
   const curve = PUMP_SDK.decodeBondingCurve(curveInfo);
-  if (curve.creator.toBase58() !== env.treasury()) return { ok: false, final: true, reason: `on-chain creator ${curve.creator.toBase58()} is not the treasury` };
+  if (curve.creator.toBase58() !== launch.creator) return { ok: false, final: true, reason: `on-chain creator ${curve.creator.toBase58()} is not the launcher` };
 
   const meta = await getTokenMetadata(conn, mint, "confirmed", TOKEN_2022_PROGRAM_ID).catch(() => null);
   if (!meta) return { ok: false, final: true, reason: "mint has no token metadata" };

@@ -44,14 +44,13 @@ export function launchMetadata(f: LaunchFields, identity: IdentityRow, digest: s
 }
 
 /**
- * create_v2 (+ first buy) for a SOL-quoted coin. The platform treasury is the
- * on-chain creator, so pump.fun's creator fees accrue to it; the launching
- * wallet signs and pays. Disclosed on the launch form and in the docs.
+ * create_v2 (+ first buy) for a SOL-quoted coin. The launching wallet signs,
+ * pays and is the on-chain creator, so pump.fun's creator fees are theirs.
  */
 export async function buildLaunchTx(p: { wallet: string; mint: string; name: string; symbol: string; uri: string; devBuySol: number }) {
   const user = new PublicKey(p.wallet);
   const mint = new PublicKey(p.mint);
-  const creator = new PublicKey(env.treasury());
+  const creator = user;
   const base = { mint, name: p.name, symbol: p.symbol, uri: p.uri, creator, user, mayhemMode: false };
   const table = await launchLookupTable();
   const tables = table ? [table] : [];

@@ -4,7 +4,7 @@ import { site } from "@/config/site";
 import { AUTH_PATH_BYTES, HEIGHT, LEAVES, LEN, LEN1, LEN2, PROTOCOL, SIGNATURE_BYTES, W, WOTS_SIG_BYTES } from "@/lib/pq";
 import { SCRYPT } from "@/lib/pq/keys";
 
-// Rendered per request so the treasury address shown is the live configuration.
+// Rendered per request, like every page: each carries a fresh CSP nonce.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "How it works", description: `The ${site.name} protocol: WOTS+ one-time signatures, Merkle identities, anchors and launch attestations.` };
@@ -278,15 +278,16 @@ lp(x)  = u32 byte length ‖ x (UTF-8)
 
         <Section id="fees" title="Creator fees">
           <P>
-            pump.fun fixes a coin&apos;s fee recipient at creation, through the <C>creator</C> argument of <C>create_v2</C>. On {site.name}, every coin sets it
-            to the platform treasury: <strong className="text-fg">creator fees from trading go to the treasury, not to the launching wallet.</strong> The
-            launching wallet signs and pays for the transaction and is the one named in the attestation. The launch form says this before you sign.
+            pump.fun fixes a coin&apos;s fee recipient at creation, through the <C>creator</C> argument of <C>create_v2</C>. On {site.name} it is always the
+            launching wallet: <strong className="text-fg">creator fees from trading go to you, the launcher.</strong> pump.fun shows your wallet as the
+            creator, and you claim the fees on pump.fun like for any coin you create there. {site.name} charges no fee of its own: you pay only pump.fun&apos;s
+            creation rent, your optional dev buy and the network fee.
           </P>
-          {process.env.TREASURY_ADDRESS && (
-            <P>
-              Treasury address: <C>{process.env.TREASURY_ADDRESS}</C>
-            </P>
-          )}
+          <P>
+            Your browser checks this before your wallet signs: the transaction is refused unless its <C>creator</C> is your wallet and no option that would
+            redirect the fees (holder rewards, for instance) is switched on. Once the coin exists, the server checks the bonding curve&apos;s creator on chain
+            again before listing it.
+          </P>
         </Section>
 
         <Section id="proofs" title="Proof of possession">
