@@ -1,5 +1,7 @@
 # Qlaunch
 
+<p align="center"><img src=".github/banner.jpg" alt="A Merkle tree of one-time keys under one root" width="100%"></p>
+
 **Launch coins that outlive the curve.** [qlaunch.xyz](https://qlaunch.xyz) · [How it works](https://qlaunch.xyz/docs) · [@QlaunchSol](https://x.com/QlaunchSol)
 
 A pump.fun launchpad where every coin carries a post-quantum attestation: a hash-based one-time signature by its
