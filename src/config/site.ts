@@ -12,10 +12,9 @@ export const site = {
   twitter: process.env.NEXT_PUBLIC_TWITTER_URL || "",
   github: process.env.NEXT_PUBLIC_GITHUB_URL || "",
   /**
-   * The project's own coin, shown above the navigation on every page and in the footer.
-   * Placeholder until launch: replace the mint with the real contract address.
+   * The project's own coin: its contract address is shown above the navigation on every page.
    */
-  officialCoin: { mint: "11111111111111111111111111111111", symbol: "QLAUNCH" },
+  officialCoin: { mint: "ANstzfa7HAp2zNXT63dfz13zsdLoRCx818AbdnMypump", symbol: "QLAUNCH" },
   /** The project's own wallet: the only one allowed to launch under the reserved name. */
   officialWallet: process.env.NEXT_PUBLIC_OFFICIAL_WALLET || "",
   cluster: (process.env.NEXT_PUBLIC_SOLANA_CLUSTER === "devnet" ? "devnet" : "mainnet") as "mainnet" | "devnet",
