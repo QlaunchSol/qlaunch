@@ -1,4 +1,5 @@
 import "server-only";
+import { site } from "@/config/site";
 import { cleanLaunchForm, type LaunchForm } from "@/lib/fields";
 import type { LaunchFields } from "@/lib/pq";
 import { identityByWallet, uploadByUrl, type IdentityRow } from "./db";
@@ -13,7 +14,7 @@ export type LaunchRequest = { wallet: string; mint: string; form: LaunchForm; de
 export async function parseLaunchRequest(body: Record<string, unknown>): Promise<LaunchRequest> {
   const wallet = pubkey(body.wallet, "wallet");
   const mint = pubkey(body.mint, "mint");
-  const form = field(() => cleanLaunchForm(body));
+  const form = field(() => cleanLaunchForm(body, { allowReserved: Boolean(site.officialWallet) && wallet === site.officialWallet }));
   if (!isGatewayUrl(form.image) || !(await uploadByUrl(form.image))) bad("Upload the image again: it has expired or wasn't uploaded here.");
   const devBuySol = Number(body.devBuySol ?? 0);
   if (!Number.isFinite(devBuySol) || devBuySol < 0 || devBuySol > MAX_DEV_BUY_SOL) bad(`Dev buy must be between 0 and ${MAX_DEV_BUY_SOL} SOL`);

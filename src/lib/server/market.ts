@@ -103,10 +103,10 @@ export async function dexStats(mints: string[]): Promise<Map<string, { priceUsd:
 /**
  * Holder count via Helius's token-account API (DAS), when the RPC is Helius:
  * one page, so exact up to 1,000. Other RPCs don't offer it: no count.
- * Cached 10 minutes.
+ * Each call costs ~10 Helius credits, so it's cached per coin: `ttlMs`.
  */
-export function holderCount(mint: string): Promise<number | null> {
-  return cached(`market:holders:${mint}`, 10 * 60_000, async () => {
+export function holderCount(mint: string, ttlMs = 10 * 60_000): Promise<number | null> {
+  return cached(`market:holders:${mint}`, ttlMs, async () => {
     if (!configured.helius()) return null;
     const das = await getJson<{ result?: { total?: number; token_accounts?: { amount: number; owner: string }[] } }>(env.rpcUrl(), {
       method: "POST",
@@ -125,7 +125,9 @@ export function holderCount(mint: string): Promise<number | null> {
 export async function refreshCoins(mints: string[], { holders = true } = {}) {
   if (!mints.length) return;
   const [sol, curves, dex] = await Promise.all([solUsd(), curveStates(mints), dexStats(mints)]);
-  const holderCounts = holders ? await Promise.all(mints.map((m) => holderCount(m).catch(() => null))) : mints.map(() => null);
+  // Holders of coins that traded in the last day every 10 minutes; quiet coins every 2 hours (Helius credits).
+  const holderTtl = (m: string) => (dex.get(m)?.volume24h ?? 1) > 0 ? 10 * 60_000 : 2 * 3600_000;
+  const holderCounts = holders ? await Promise.all(mints.map((m) => holderCount(m, holderTtl(m)).catch(() => null))) : mints.map(() => null);
   const rows = mints.map((mint, i) => {
     const curve = curves.get(mint);
     const d = dex.get(mint);

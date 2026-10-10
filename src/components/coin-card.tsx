@@ -31,7 +31,10 @@ export function CoinCard({ coin, fresh }: { coin: Coin; fresh?: boolean }) {
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold text-fg transition-colors group-hover:text-mint">{coin.name}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-semibold text-fg transition-colors group-hover:text-mint">{coin.name}</span>
+            {coin.official && <span className="shrink-0 rounded-full border border-mint/40 bg-mint/10 px-1.5 py-px text-[10px] font-medium text-mint">Official</span>}
+          </div>
           <div className="font-mono text-xs text-muted">${coin.symbol}</div>
           {coin.description && <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted">{coin.description}</p>}
         </div>

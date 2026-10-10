@@ -53,6 +53,7 @@ export function CoinView({ initial }: { initial: TokenDetail }) {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="break-words text-2xl font-semibold tracking-tight text-fg sm:text-3xl">{coin.name}</h1>
             <span className="font-mono text-lg text-muted">${coin.symbol}</span>
+            {coin.official && <Badge tone="mint">Official {site.name} coin</Badge>}
             {verdict === "valid" ? (
               <Badge tone="mint">
                 <ShieldCheck className="size-3" /> PQ-attested

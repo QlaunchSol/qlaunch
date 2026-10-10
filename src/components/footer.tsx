@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { site } from "@/config/site";
 import { PROTOCOL } from "@/lib/pq/params";
+import { officialCoin } from "@/lib/server/official";
+import { OfficialCoinCA } from "./official-coin";
 import { Wordmark } from "./logo";
 import { SocialLinks } from "./social-icons";
 
@@ -27,9 +29,18 @@ function Column({ title, links }: { title: string; links: { href: string; label:
   );
 }
 
-export function Footer() {
+export async function Footer() {
+  const official = await officialCoin();
   return (
     <footer className="mt-24 border-t border-line">
+      {official && (
+        <div className="border-b border-line bg-panel/60">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
+            <span className="text-xs font-medium text-mint">Official {site.name} coin</span>
+            <OfficialCoinCA coin={official} />
+          </div>
+        </div>
+      )}
       <div className="mx-auto grid max-w-6xl grid-cols-2 gap-10 px-4 py-12 md:grid-cols-[1.6fr_1fr_1fr]">
         <div className="col-span-2 max-w-md space-y-4 md:col-span-1">
           <Wordmark name={site.name} />
@@ -59,6 +70,13 @@ export function Footer() {
         />
       </div>
       <div className="border-t border-line">
+        <p className="mx-auto max-w-6xl px-4 pt-5 text-[11px] leading-relaxed text-faint">
+          <span className="text-muted">Disclaimer.</span> {official?.symbol ? `$${official.symbol}` : `The ${site.name} coin`} is a memecoin. It has no intrinsic
+          value, no utility, no roadmap and no team promises of any kind, and you should expect no financial return from it. The same goes for every coin
+          launched here: they are created by their launchers, not by {site.name}, and listing one is not an endorsement. Nothing on this site is financial,
+          investment or legal advice. Crypto assets are highly volatile and you can lose everything you put in. Only use money you can afford to lose, and
+          check that buying memecoins is legal where you live. {site.name} is experimental, open-source software provided as is, without warranty.
+        </p>
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-5 font-mono text-[11px] text-faint">
           <span>
             © {new Date().getUTCFullYear()} {site.name} · MIT licensed

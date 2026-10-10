@@ -76,10 +76,11 @@ export type LaunchForm = { name: string; symbol: string; description: string; im
 /** Names nobody may launch under: no "official Qlaunch token" impersonations. */
 const RESERVED = /q\W*l\W*a\W*u\W*n\W*c\W*h/i;
 
-export function cleanLaunchForm(raw: Partial<Record<keyof LaunchForm, unknown>>): LaunchForm {
+/** `allowReserved`: only for the project's own wallet (site.officialWallet), launching the official coin. */
+export function cleanLaunchForm(raw: Partial<Record<keyof LaunchForm, unknown>>, { allowReserved = false } = {}): LaunchForm {
   const name = cleanText(raw.name, LIMITS.name, "Name", { required: true });
   const symbol = cleanSymbol(raw.symbol);
-  if (RESERVED.test(name) || RESERVED.test(symbol)) fail("Names and tickers containing “Qlaunch” are reserved");
+  if (!allowReserved && (RESERVED.test(name) || RESERVED.test(symbol))) fail("Names and tickers containing “Qlaunch” are reserved");
   return {
     name,
     symbol,

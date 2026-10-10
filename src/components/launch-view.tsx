@@ -200,11 +200,11 @@ export function LaunchView() {
 
   const cleaned = useMemo((): { form: LaunchForm | null; error: string | null } => {
     try {
-      return { form: cleanLaunchForm(raw), error: null };
+      return { form: cleanLaunchForm(raw, { allowReserved: Boolean(site.officialWallet) && address === site.officialWallet }), error: null };
     } catch (err) {
       return { form: null, error: err instanceof FieldError ? err.message : "Invalid input" };
     }
-  }, [raw]);
+  }, [raw, address]);
 
   const devBuySol = Number(devBuy || 0);
   const devBuyError = !Number.isFinite(devBuySol) || devBuySol < 0 ? "Enter an amount in SOL" : devBuySol > MAX_DEV_BUY ? `At most ${MAX_DEV_BUY} SOL` : null;

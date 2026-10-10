@@ -11,6 +11,8 @@ export const site = {
     "A pump.fun launchpad where every coin is attested by a hash-based, post-quantum one-time signature. WOTS+ keys, Merkle identities, on-chain anchors.",
   twitter: process.env.NEXT_PUBLIC_TWITTER_URL || "",
   github: process.env.NEXT_PUBLIC_GITHUB_URL || "",
+  /** The project's own wallet: the only one allowed to launch under the reserved name (the official coin). */
+  officialWallet: process.env.NEXT_PUBLIC_OFFICIAL_WALLET || "",
   cluster: (process.env.NEXT_PUBLIC_SOLANA_CLUSTER === "devnet" ? "devnet" : "mainnet") as "mainnet" | "devnet",
 } as const;
 

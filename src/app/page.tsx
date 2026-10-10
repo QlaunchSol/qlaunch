@@ -2,10 +2,12 @@ import { ArrowRight } from "lucide-react";
 import { CoinGrid } from "@/components/coin-grid";
 import { HowItWorks } from "@/components/how-it-works";
 import { LiveVerify } from "@/components/live-verify";
+import { OfficialCoinCA } from "@/components/official-coin";
 import { ButtonLink } from "@/components/ui";
 import { site } from "@/config/site";
 import { configured } from "@/lib/server/env";
 import { listCoins, platformStats } from "@/lib/server/coins";
+import { officialCoin } from "@/lib/server/official";
 import { SIGNATURE_BYTES } from "@/lib/pq";
 import type { CoinList, PlatformStats } from "@/lib/types";
 
@@ -18,7 +20,7 @@ async function loadInitial(): Promise<{ list: CoinList | null; stats: PlatformSt
 }
 
 export default async function Home() {
-  const { list, stats } = await loadInitial();
+  const [{ list, stats }, official] = await Promise.all([loadInitial(), officialCoin()]);
   return (
     <div>
       <section className="relative overflow-hidden border-b border-line">
@@ -53,6 +55,7 @@ export default async function Home() {
                 <span className="text-fg">Creator fees go to you.</span> {site.name} takes no fee.
               </span>
             </p>
+            {official && <OfficialCoinCA coin={official} className="mt-3 rounded-lg border border-mint/25 bg-mint/5 px-3 py-2" />}
             <dl className="mt-10 grid max-w-lg grid-cols-3 gap-6 border-t border-line pt-6">
               <div>
                 <dt className="text-[11px] uppercase tracking-wider text-faint">Signature</dt>
