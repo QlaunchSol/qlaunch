@@ -103,7 +103,7 @@ export function VerifyAnimation({ trace, playKey, chainsMs = 1800, treeMs = 900 
       <MerklePath trace={trace} progress={tree} />
       <div className={cx("flex items-center justify-between rounded-md border px-3 py-2 font-mono text-xs transition-colors", !done ? "border-line text-faint" : trace.valid ? "border-mint/40 bg-mint/5 text-mint" : "border-bad/40 bg-bad/5 text-bad")}>
         <span>{!done ? "verifying…" : trace.valid ? "root matches: signature valid" : "root mismatch: INVALID"}</span>
-        <span>{short(trace.expectedRoot, 12)}</span>
+        <span className="hidden sm:inline">{short(trace.expectedRoot, 12)}</span>
       </div>
     </div>
   );

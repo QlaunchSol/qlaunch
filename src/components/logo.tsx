@@ -1,18 +1,17 @@
 import { cx } from "@/lib/cx";
 
 /**
- * The mark: a Merkle tree read from the bottom, two leaves hashing into one
- * root, drawn as a single stroke.
+ * The mark: a Q whose ring is the Merkle root and whose tail is a hash chain,
+ * the same cells the site's verification grid draws, brightening toward the
+ * public end. Same geometry as src/app/icon.svg and public/brand/.
  */
-export function LogoMark({ className }: { className?: string }) {
+export function LogoMark({ className, tile = true }: { className?: string; tile?: boolean }) {
   return (
     <svg viewBox="0 0 32 32" className={cx("size-7", className)} aria-hidden>
-      <rect x="0.5" y="0.5" width="31" height="31" rx="8" className="fill-mint-dim stroke-mint/40" />
-      <path d="M9 22 L16 14 L23 22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-mint" />
-      <path d="M16 14 V8.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-mint" />
-      <circle cx="9" cy="22.5" r="2.4" className="fill-mint" />
-      <circle cx="23" cy="22.5" r="2.4" className="fill-mint" />
-      <circle cx="16" cy="8" r="2.4" className="fill-bg stroke-mint" strokeWidth="1.8" />
+      {tile && <rect x="0.5" y="0.5" width="31" height="31" rx="8" fill="#0e2a20" stroke="#5ef0b6" strokeOpacity="0.35" />}
+      <circle cx="14" cy="14" r="7.4" fill="none" stroke="#5ef0b6" strokeWidth="3.4" />
+      <rect x="18.6" y="18.6" width="5" height="5" rx="1.1" fill="#5ef0b6" fillOpacity="0.55" />
+      <rect x="22.8" y="22.8" width="5" height="5" rx="1.1" fill="#5ef0b6" />
     </svg>
   );
 }

@@ -1,39 +1,72 @@
 import Link from "next/link";
 import { site } from "@/config/site";
+import { PROTOCOL } from "@/lib/pq/params";
 import { Wordmark } from "./logo";
+import { SocialLinks } from "./social-icons";
+
+function Column({ title, links }: { title: string; links: { href: string; label: string; external?: boolean }[] }) {
+  return (
+    <div>
+      <h3 className="text-xs font-medium uppercase tracking-wider text-faint">{title}</h3>
+      <ul className="mt-3 space-y-2 text-sm">
+        {links.map((l) => (
+          <li key={l.href}>
+            {l.external ? (
+              <a href={l.href} target="_blank" rel="noreferrer" className="text-muted transition-colors hover:text-fg">
+                {l.label} <span className="text-faint">↗</span>
+              </a>
+            ) : (
+              <Link href={l.href} className="text-muted transition-colors hover:text-fg">
+                {l.label}
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function Footer() {
   return (
     <footer className="mt-24 border-t border-line">
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-[1fr_auto]">
-        <div className="max-w-md space-y-3">
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-10 px-4 py-12 md:grid-cols-[1.6fr_1fr_1fr]">
+        <div className="col-span-2 max-w-md space-y-4 md:col-span-1">
           <Wordmark name={site.name} />
           <p className="text-xs leading-relaxed text-faint">
-            Coins launch on pump.fun&apos;s bonding curve, on Solana. {site.name} is independent and not affiliated with pump.fun. Memecoins are highly speculative: most go to
-            zero. A post-quantum attestation proves who launched a coin, not that it is worth anything.
+            Coins launch on pump.fun&apos;s bonding curve, on Solana. {site.name} is independent and not affiliated with pump.fun. Memecoins are highly speculative:
+            most go to zero. A post-quantum attestation proves who launched a coin, not that it is worth anything.
           </p>
+          <SocialLinks twitter={site.twitter} github={site.github} className="-ml-2" />
         </div>
-        <nav className="flex flex-wrap gap-x-8 gap-y-2 text-sm text-muted sm:flex-col">
-          <Link href="/docs" className="hover:text-fg">
-            How it works
-          </Link>
-          <Link href="/verify" className="hover:text-fg">
-            Verify a coin
-          </Link>
-          <a href="https://pump.fun" target="_blank" rel="noreferrer" className="hover:text-fg">
-            Built on pump.fun
-          </a>
-          {site.twitter && (
-            <a href={site.twitter} target="_blank" rel="noreferrer" className="hover:text-fg">
-              X
-            </a>
-          )}
-          {site.github && (
-            <a href={site.github} target="_blank" rel="noreferrer" className="hover:text-fg">
-              GitHub
-            </a>
-          )}
-        </nav>
+        <Column
+          title="Product"
+          links={[
+            { href: "/", label: "Coins" },
+            { href: "/launch", label: "Launch a coin" },
+            { href: "/identity", label: "Your identity" },
+            { href: "/verify", label: "Verify a coin" },
+          ]}
+        />
+        <Column
+          title="Learn"
+          links={[
+            { href: "/docs", label: "How it works" },
+            { href: "/docs#verify", label: "Verify it yourself" },
+            ...(site.github ? [{ href: site.github, label: "Source code", external: true }] : []),
+            { href: "https://pump.fun", label: "pump.fun", external: true },
+          ]}
+        />
+      </div>
+      <div className="border-t border-line">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-5 font-mono text-[11px] text-faint">
+          <span>
+            © {new Date().getUTCFullYear()} {site.name} · MIT licensed
+          </span>
+          <span>
+            {PROTOCOL} · WOTS+ · SHA-256 only
+          </span>
+        </div>
       </div>
     </footer>
   );

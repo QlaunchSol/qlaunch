@@ -9,6 +9,7 @@ import { useIdentity } from "@/lib/client/identity";
 import { useWallet } from "@/lib/client/wallet";
 import { short } from "@/lib/format";
 import { Wordmark } from "./logo";
+import { SocialLinks } from "./social-icons";
 import { Button, cx } from "./ui";
 
 const LINKS = [
@@ -75,6 +76,7 @@ export function Navbar() {
           </nav>
         </div>
         <div className="flex items-center gap-2">
+          <SocialLinks twitter={site.twitter} github={site.github} className="hidden lg:flex" />
           <IdentityChip />
           <WalletButton />
           <button className="rounded-md p-2 text-muted hover:text-fg md:hidden" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>
@@ -94,6 +96,7 @@ export function Navbar() {
               {l.label}
             </Link>
           ))}
+          <SocialLinks twitter={site.twitter} github={site.github} className="mt-1 border-t border-line pt-2" />
         </nav>
       )}
     </header>

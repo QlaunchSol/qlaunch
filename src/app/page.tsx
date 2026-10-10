@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { CoinGrid } from "@/components/coin-grid";
+import { HowItWorks } from "@/components/how-it-works";
 import { LiveVerify } from "@/components/live-verify";
 import { ButtonLink } from "@/components/ui";
 import { site } from "@/config/site";
@@ -67,7 +68,9 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 pt-10">
+      <HowItWorks />
+
+      <section className="mx-auto max-w-6xl px-4 pt-14">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold tracking-tight text-fg">Every attested launch</h2>
