@@ -40,6 +40,15 @@ function Section({ id, title, children }: { id: string; title: string; children:
   );
 }
 
+/** A path in the repo, linked to GitHub when the repo URL is configured. */
+const Src = ({ path }: { path: string }) =>
+  site.github ? (
+    <a href={`${site.github}/${path.includes(".") ? "blob" : "tree"}/main/${path}`} target="_blank" rel="noreferrer" className="hover:underline">
+      <C>{path}</C>
+    </a>
+  ) : (
+    <C>{path}</C>
+  );
 const P = ({ children }: { children: ReactNode }) => <p className="text-[15px] leading-7 text-muted">{children}</p>;
 const C = ({ children }: { children: ReactNode }) => <code className="rounded bg-panel-3 px-1.5 py-0.5 font-mono text-[13px] text-fg">{children}</code>;
 const Pre = ({ children }: { children: string }) => (
@@ -95,7 +104,8 @@ export default function DocsPage() {
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-fg">How {site.name} works</h1>
           <p className="mt-3 text-[15px] leading-7 text-muted">
             The complete protocol: what is signed, by which key, how anyone checks it, and what it does and doesn&apos;t protect. Everything here is
-            implemented in <C>src/lib/pq</C> and cross-checked by an independent Python verifier.
+            implemented in{" "}
+            <Src path="src/lib/pq" /> and cross-checked by an independent Python verifier, <Src path="scripts/verify.py" />.
           </p>
         </header>
 
