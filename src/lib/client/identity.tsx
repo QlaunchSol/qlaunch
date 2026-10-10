@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { LEAVES, REGISTRATION_LEAF, bytesToHex, registrationDigest, registrationStatement, seedMessage, signatureToBase64 } from "@/lib/pq";
 import { fromBase64, toBase64 } from "@/lib/pq/bytes";
 import { deriveSeed, generateIdentity, sign, type IdentityKeys } from "@/lib/pq/keys";
+import { resetStatement } from "@/lib/identity-reset";
 import type { IdentityDetail } from "@/lib/types";
 import { ApiError, api } from "./api";
 import { recordSignature, signedKeys, withKeyLock } from "./leaf-journal";
@@ -28,6 +29,8 @@ type IdentityState = {
   lock: () => void;
   register: () => Promise<void>;
   anchor: () => Promise<void>;
+  /** Deletes this wallet's identity (forgotten passphrase); refused by the server once it has a coin. */
+  reset: () => Promise<void>;
   refresh: () => Promise<IdentityDetail | null>;
 };
 
@@ -164,6 +167,20 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     if (walletRef.current === w) setDetail(result);
   }, [signTransaction]);
 
+  const reset = useCallback(async () => {
+    const w = walletRef.current;
+    const identity = detail?.identity;
+    if (!w || !identity || identity.wallet !== w) throw new Error("Connect the wallet of this identity first");
+    const statement = resetStatement({ wallet: w, pqAddress: identity.address, registeredAt: identity.createdAt });
+    const signature = bs58.encode(await signMessage(statement));
+    await api("/api/identity/reset", { body: { wallet: w, signature } });
+    localStorage.removeItem(anchorPendingKey(w));
+    if (walletRef.current === w) {
+      setKeys(null);
+      setDetail(null);
+    }
+  }, [detail, signMessage]);
+
   const usedLeaves = useMemo(() => {
     const used = new Set(detail?.usedLeaves.map((u) => u.leaf) ?? []);
     if (keys) for (const leaf of signedKeys(keys.address).keys()) used.add(leaf);
@@ -182,6 +199,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     lock: () => setKeys(null),
     register,
     anchor,
+    reset,
     refresh,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

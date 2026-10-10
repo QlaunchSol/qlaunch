@@ -52,6 +52,33 @@ function chooseLeaf(keys: IdentityKeys, wallet: string, form: LaunchForm, server
   return freshLeaf(keys.address, new Set([...serverUsed, ...skip]));
 }
 
+/**
+ * The unfinished launch form, kept in this browser so leaving to create an
+ * identity (or a reload) doesn't lose it. The uploaded image is only kept for
+ * a few hours: uploads nobody launches with are unpinned after 6.
+ */
+const DRAFT_KEY = "qlaunch:launch-draft";
+const DRAFT_IMAGE_TTL_MS = 5 * 3600_000;
+type Draft = { raw: { name: string; symbol: string; description: string; image: string; twitter: string; telegram: string }; devBuy: string; imageAt: number };
+
+function loadDraft(): Draft | null {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "null") as Draft | null;
+    if (!d?.raw || typeof d.imageAt !== "number") return null;
+    if (Date.now() - d.imageAt > DRAFT_IMAGE_TTL_MS) d.raw.image = "";
+    return d;
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(d: Draft | null) {
+  try {
+    if (d) localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch {}
+}
+
 function ImagePicker({ url, onUploaded, onPreview }: { url: string; onUploaded: (url: string) => void; onPreview: (src: string | null) => void }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,9 +132,9 @@ function ImagePicker({ url, onUploaded, onPreview }: { url: string; onUploaded: 
         aria-label="Choose coin image"
         className="group relative flex aspect-square w-40 items-center justify-center overflow-hidden rounded-xl border border-dashed border-line-2 bg-panel-2 transition-colors hover:border-mint/50"
       >
-        {preview ? (
+        {preview || url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt="Coin image" className="size-full object-cover" />
+          <img src={preview ?? url} alt="Coin image" className="size-full object-cover" />
         ) : (
           <span className="flex flex-col items-center gap-2 text-xs text-faint group-hover:text-muted">
             <ImagePlus className="size-6" />
@@ -148,6 +175,26 @@ export function LaunchView() {
   const [balance, setBalance] = useState<number | null>(null);
   const mounted = useRef(true);
   useEffect(() => () => void (mounted.current = false), []);
+
+  // Restore the draft once, then keep it saved as it changes (cleared after a successful launch).
+  const [draftReady, setDraftReady] = useState(false);
+  const image = useRef({ url: "", at: 0 }); // when the current image was uploaded
+  useEffect(() => {
+    const d = loadDraft();
+    if (d) {
+      setRaw(d.raw);
+      setDevBuy(d.devBuy);
+      if (d.raw.image) setPreviewSrc(d.raw.image);
+      image.current = { url: d.raw.image, at: d.imageAt };
+    }
+    setDraftReady(true);
+  }, []);
+  useEffect(() => {
+    if (!draftReady) return;
+    if (raw.image !== image.current.url) image.current = { url: raw.image, at: Date.now() };
+    const empty = !Object.values(raw).some(Boolean) && (devBuy === "0" || devBuy === "");
+    saveDraft(empty ? null : { raw, devBuy, imageAt: image.current.at || Date.now() });
+  }, [raw, devBuy, draftReady]);
 
   const set = (k: keyof typeof raw) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setRaw((r) => ({ ...r, [k]: e.target.value }));
 
@@ -263,6 +310,7 @@ export function LaunchView() {
       refresh().catch(() => {});
       if (prepared.status === "live") {
         setPhase("done");
+        saveDraft(null);
         return router.push(`/coin/${prepared.mint}?launched=1`);
       }
       if (!("transaction" in prepared) || !prepared.transaction) throw new Error("The server didn't return a transaction. Try again.");
@@ -285,6 +333,7 @@ export function LaunchView() {
       if (!mounted.current) return;
       if (result.status === "live") {
         setPhase("done");
+        saveDraft(null);
         router.push(`/coin/${prepared.mint}?launched=1`);
       } else if (result.status === "failed") {
         setPhase("idle");

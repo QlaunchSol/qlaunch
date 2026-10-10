@@ -2,6 +2,7 @@
 
 import { Eye, EyeOff, KeyRound } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useIdentity } from "@/lib/client/identity";
 import { walletErrorMessage } from "@/lib/client/api";
@@ -67,8 +68,78 @@ export function UnlockProgressBar() {
  * Gate for pages that sign: renders children once the wallet is connected,
  * an identity is registered and its keys are unlocked in this tab.
  */
+/**
+ * A forgotten passphrase can't be recovered (nothing stores it), but an
+ * identity that hasn't launched a coin yet can be reset and registered anew.
+ */
+export function ForgotPassphrase() {
+  const { detail, reset } = useIdentity();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!detail) return null;
+  const hasCoins = detail.launches.some((l) => l.status !== "failed");
+
+  const confirmReset = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await reset();
+    } catch (err) {
+      setError(walletErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" className="w-full text-xs text-faint hover:text-muted" onClick={() => setOpen(true)}>
+        Forgot your passphrase?
+      </button>
+    );
+  }
+  return (
+    <Notice tone="warn" title="Forgot your passphrase?">
+      <div className="space-y-3 text-xs">
+        <p>
+          It can&apos;t be recovered: it&apos;s never stored anywhere, and your keys can&apos;t be rebuilt without it. Try the passphrases you might have
+          used first.
+        </p>
+        {hasCoins ? (
+          <p>
+            This identity has launched a coin, so it can&apos;t be reset: its attestation must keep pointing at it. Your coins and wallet are unaffected;
+            you just can&apos;t sign anything new with this identity.
+          </p>
+        ) : (
+          <>
+            <p>
+              This identity hasn&apos;t launched a coin, so you can reset it: it&apos;s deleted, and you register a new one (with a new passphrase, it gets a
+              new address). Your wallet signs the reset; nothing is paid.
+            </p>
+            {error && <p className="text-bad">{error}</p>}
+            <div className="flex gap-2">
+              <Button variant="danger" size="sm" loading={busy} onClick={confirmReset}>
+                Reset my identity
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={busy}>
+                Cancel
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </Notice>
+  );
+}
+
+/** Pages the identity page may send you back to once your identity exists. */
+export const RETURN_PATHS: Record<string, string> = { "/launch": "your launch", "/verify": "your proof" };
+
 export function RequireKeys({ children, purpose }: { children: ReactNode; purpose: string }) {
   const { address, connect } = useWallet();
+  const pathname = usePathname();
+  const back = RETURN_PATHS[pathname] ? pathname : null;
   const { detail, keys, unlock, unlocking, lookupError, refresh } = useIdentity();
   const [passphrase, setPassphrase] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -102,8 +173,11 @@ export function RequireKeys({ children, purpose }: { children: ReactNode; purpos
   if (detail === null) {
     return (
       <Panel className="p-6 text-center">
-        <p className="text-sm text-muted">This wallet doesn&apos;t have a post-quantum identity yet. Create one first: it takes a minute and costs nothing.</p>
-        <Link href="/identity" className="mt-4 inline-flex h-10 items-center rounded-md bg-mint px-4 text-sm font-medium text-bg hover:bg-mint-2">
+        <p className="text-sm text-muted">
+          This wallet doesn&apos;t have a post-quantum identity yet. Create one first: it takes a minute and costs nothing.
+          {back === "/launch" && " What you've entered here is kept for when you come back."}
+        </p>
+        <Link href={back ? `/identity?next=${encodeURIComponent(back)}` : "/identity"} className="mt-4 inline-flex h-10 items-center rounded-md bg-mint px-4 text-sm font-medium text-bg hover:bg-mint-2">
           Create identity
         </Link>
       </Panel>
@@ -144,6 +218,7 @@ export function RequireKeys({ children, purpose }: { children: ReactNode; purpos
             I registered with a passphrase
           </button>
         )}
+        <ForgotPassphrase />
       </form>
     </Panel>
   );

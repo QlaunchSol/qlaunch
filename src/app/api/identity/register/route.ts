@@ -14,7 +14,7 @@ import {
   verify,
 } from "@/lib/pq";
 import { rateLimit } from "@/lib/server/cache";
-import { burnLeaf, identityByWallet, insertIdentity } from "@/lib/server/db";
+import { burnLeaf, identityByWallet, insertIdentity, restoreRetiredLeaves } from "@/lib/server/db";
 import { bad, clientIp, readJson, route } from "@/lib/server/http";
 import { identityDetail } from "@/lib/server/identity";
 import { pubkey } from "@/lib/server/validate";
@@ -66,6 +66,8 @@ export const POST = route(async (request) => {
       wallet_signature: String(body.walletSignature),
       registration_signature: String(body.signature),
     })) ?? bad("This wallet or identity is already registered", 409);
+  // An identity registered before and reset: its spent keys stay spent.
+  await restoreRetiredLeaves(row.id, address);
   await burnLeaf({ identityId: row.id, leaf: REGISTRATION_LEAF, purpose: "register", digest: bytesToHex(digest), ref: wallet });
   return Response.json(await identityDetail(row), { status: 201 });
 });

@@ -153,6 +153,45 @@ export function launchesOfIdentity(identityId: number) {
     from launches where identity_id = ${identityId} order by created_at desc limit 100`;
 }
 
+/**
+ * Deletes an identity that has no live or in-flight coins (checked by the
+ * caller, and again here under a row lock): its spent keys move to
+ * retired_leaves, its failed launches and proofs go. Returns the metadata pins
+ * of those launches, to unpin. Null if it has a launch that isn't failed.
+ */
+export async function resetIdentity(identity: IdentityRow): Promise<string[] | null> {
+  return sql().begin(async (tx) => {
+    await tx`select id from identities where id = ${identity.id} for update`;
+    const [busy] = await tx`select 1 from launches where identity_id = ${identity.id} and status <> 'failed' limit 1`;
+    if (busy) return null;
+    await tx`
+      insert into retired_leaves (pq_address, leaf, purpose, digest, ref, created_at)
+      select ${identity.pq_address}, leaf, purpose, digest, ref, created_at from leaf_uses where identity_id = ${identity.id}
+      on conflict do nothing`;
+    const launches = await tx<{ metadata_pin_id: string | null; image_url: string }[]>`
+      delete from launches where identity_id = ${identity.id} returning metadata_pin_id, image_url`;
+    for (const l of launches) {
+      await tx`update uploads set used_at = null where url = ${l.image_url}
+        and not exists (select 1 from launches o where o.image_url = uploads.url and o.status in ('live', 'pending'))`;
+    }
+    await tx`delete from identities where id = ${identity.id}`; // leaf_uses and proofs cascade
+    return launches.map((l) => l.metadata_pin_id).filter((x): x is string => Boolean(x));
+  });
+}
+
+/** Re-registering a reset identity: its previously spent keys are spent again. */
+export async function restoreRetiredLeaves(identityId: number, pqAddress: string) {
+  await sql()`
+    insert into leaf_uses (identity_id, leaf, purpose, digest, ref, created_at)
+    select ${identityId}, leaf, purpose, digest, ref, created_at from retired_leaves where pq_address = ${pqAddress}
+    on conflict do nothing`;
+}
+
+/** Marks a pending launch failed (it can no longer land). */
+export async function failLaunch(mint: string, reason: string) {
+  await sql()`update launches set status = 'failed', failure_reason = ${reason} where mint = ${mint} and status = 'pending'`;
+}
+
 /** Inserts a pending launch; false if the mint or (identity, leaf) is already taken. */
 export async function insertLaunch(
   r: Omit<LaunchRow, "status" | "tx_signature" | "created_at" | "launched_at" | "hidden" | "dev_buy_sol" | "dev_tokens" | "failure_reason"> & { dev_buy_sol: number },

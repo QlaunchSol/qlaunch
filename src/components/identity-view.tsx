@@ -2,6 +2,7 @@
 
 import { Anchor, Check, KeyRound, Lock, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { explorerTx, site } from "@/config/site";
 import { walletErrorMessage } from "@/lib/client/api";
@@ -11,7 +12,7 @@ import { TimeAgo } from "./time-ago";
 import { bytesToHex } from "@/lib/pq";
 import { CoinImage } from "./coin-image";
 import { KeyGrid } from "./key-grid";
-import { PassphraseInput, UnlockProgressBar, rememberPassphraseUse } from "./unlock";
+import { ForgotPassphrase, PassphraseInput, RETURN_PATHS, UnlockProgressBar, rememberPassphraseUse } from "./unlock";
 import { Badge, Button, Field, Hash, Notice, Panel, PanelHeader, SectionTitle, cx } from "./ui";
 
 function Step({ n, title, done, active, children }: { n: number; title: string; done: boolean; active: boolean; children?: ReactNode }) {
@@ -95,7 +96,10 @@ function CreateFlow() {
               <Field label="Confirm passphrase" htmlFor="confirm-passphrase" error={mismatch ? "Passphrases don't match" : null}>
                 <PassphraseInput id="confirm-passphrase" label="Confirm passphrase" value={confirm} onChange={setConfirm} />
               </Field>
-              <Notice tone="warn">There is no recovery. Lose the passphrase and this identity is gone for good (your wallet and coins are unaffected).</Notice>
+              <Notice tone="warn" title="Write it down now">
+                There is no recovery: it&apos;s never stored anywhere. Lose it and you can&apos;t sign with this identity again (your wallet and coins are
+                unaffected; an identity that hasn&apos;t launched a coin yet can be reset).
+              </Notice>
             </div>
           )}
           <UnlockProgressBar />
@@ -191,6 +195,11 @@ function RegisteredView() {
               </div>
             ))}
           </dl>
+          {!keys && (
+            <div className="border-t border-line px-5 py-3">
+              <ForgotPassphrase />
+            </div>
+          )}
         </Panel>
 
         <Panel>
@@ -272,6 +281,8 @@ function RegisteredView() {
 export function IdentityView() {
   const { address, connect } = useWallet();
   const { detail, lookupError, refresh } = useIdentity();
+  const next = useSearchParams().get("next") ?? "";
+  const back = RETURN_PATHS[next] ? next : null;
   return (
     <div className="mx-auto max-w-6xl space-y-8 px-4 py-10">
       <SectionTitle
@@ -279,6 +290,16 @@ export function IdentityView() {
         title="Your post-quantum identity"
         sub={`A Merkle tree of 256 hash-based one-time keys, derived from your wallet. Its root is your public key on ${site.name}; every launch you make is signed by one of its leaves.`}
       />
+      {back && detail && (
+        <Notice tone="ok" title="Your identity is ready">
+          <span className="flex flex-wrap items-center justify-between gap-3">
+            <span>Anchoring it below is optional. Pick up where you left off whenever you like.</span>
+            <Link href={back} className="inline-flex h-9 items-center rounded-md bg-mint px-4 text-sm font-medium text-bg hover:bg-mint-2">
+              Continue to {RETURN_PATHS[back]}
+            </Link>
+          </span>
+        </Notice>
+      )}
       {!address ? (
         <Panel className="p-8 text-center">
           <p className="text-sm text-muted">Connect a Solana wallet to create or open your identity.</p>
