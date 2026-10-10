@@ -2,7 +2,6 @@ import Link from "next/link";
 import { site } from "@/config/site";
 import { PROTOCOL } from "@/lib/pq/params";
 import { officialCoin } from "@/lib/server/official";
-import { OfficialCoinCA } from "./official-coin";
 import { Wordmark } from "./logo";
 import { SocialLinks } from "./social-icons";
 
@@ -33,14 +32,7 @@ export async function Footer() {
   const official = await officialCoin();
   return (
     <footer className="mt-24 border-t border-line">
-      {official && (
-        <div className="border-b border-line bg-panel/60">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
-            <span className="text-xs font-medium text-mint">Official {site.name} coin</span>
-            <OfficialCoinCA coin={official} />
-          </div>
-        </div>
-      )}
+
       <div className="mx-auto grid max-w-6xl grid-cols-2 gap-10 px-4 py-12 md:grid-cols-[1.6fr_1fr_1fr]">
         <div className="col-span-2 max-w-md space-y-4 md:col-span-1">
           <Wordmark name={site.name} />
