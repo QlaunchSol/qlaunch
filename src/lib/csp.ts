@@ -16,7 +16,8 @@ export function strictDirectives(nonce: string): string[] {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
-    `connect-src 'self' https://api.mainnet-beta.solana.com https://api.devnet.solana.com ws://localhost:* ${gatewayOrigin()}`.trim(),
+    // the public nodes the coin check reads from (src/lib/client/verify-coin.ts)
+    `connect-src 'self' https://solana-rpc.publicnode.com https://solana-mainnet.gateway.tatum.io https://api.mainnet-beta.solana.com https://api.devnet.solana.com ws://localhost:* ${gatewayOrigin()}`.trim(),
     ...baselineDirectives(),
   ];
 }

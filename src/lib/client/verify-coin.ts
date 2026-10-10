@@ -40,7 +40,15 @@ type Metadata = {
   };
 };
 
-const PUBLIC_RPC = site.cluster === "devnet" ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com";
+/**
+ * Independent public nodes that answer browsers (Solana's own mainnet endpoint
+ * refuses most cross-origin requests), tried in order. Keep in sync with the
+ * CSP's connect-src (src/lib/csp.ts).
+ */
+export const PUBLIC_RPCS =
+  site.cluster === "devnet"
+    ? ["https://api.devnet.solana.com"]
+    : ["https://solana-rpc.publicnode.com", "https://solana-mainnet.gateway.tatum.io", "https://api.mainnet-beta.solana.com"];
 
 /**
  * The mint's own Token-2022 metadata (name, symbol, uri), read straight from a
@@ -48,18 +56,19 @@ const PUBLIC_RPC = site.cluster === "devnet" ? "https://api.devnet.solana.com" :
  * truth for which metadata a coin points at. Null if it can't be read.
  */
 async function onChainMetadata(mint: string): Promise<{ name: string; symbol: string; uri: string } | null> {
-  try {
-    const res = await fetch(PUBLIC_RPC, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    const data = (await res.json())?.result?.value?.data?.[0];
-    return typeof data === "string" ? parseTokenMetadata(fromBase64(data)) : null;
-  } catch {
-    return null;
+  for (const rpc of PUBLIC_RPCS) {
+    try {
+      const res = await fetch(rpc, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] }),
+        signal: AbortSignal.timeout(8_000),
+      });
+      const data = (await res.json())?.result?.value?.data?.[0];
+      if (typeof data === "string") return parseTokenMetadata(fromBase64(data));
+    } catch {}
   }
+  return null;
 }
 
 /** Token-2022 mint account → its TokenMetadata extension's name, symbol and uri (null if absent). */

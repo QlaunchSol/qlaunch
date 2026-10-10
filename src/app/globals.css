@@ -23,6 +23,7 @@
   --animate-blink: blink 1.1s steps(1) infinite;
   --animate-rise: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-pulse-mint: pulse-mint 2.4s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.6s ease-in-out infinite;
 
   @keyframes blink {
     50% {
@@ -33,6 +34,14 @@
     from {
       opacity: 0;
       transform: translateY(6px);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
     }
   }
   @keyframes pulse-mint {
@@ -102,6 +111,45 @@ body {
   button:disabled,
   select:disabled {
     cursor: not-allowed;
+  }
+}
+
+/* Coin cards: each signature chain is hashed up to its public key, on load and again on hover
+   (a second, identical keyframes name makes the animation restart). */
+.chain-walk,
+.chain-key {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: chain-walk 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.chain-key {
+  animation-name: chain-key;
+  animation-duration: 0.35s;
+}
+.group:hover .chain-walk {
+  animation-name: chain-walk-again;
+}
+.group:hover .chain-key {
+  animation-name: chain-key-again;
+}
+@keyframes chain-walk {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes chain-walk-again {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes chain-key {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes chain-key-again {
+  from {
+    opacity: 0;
   }
 }
 

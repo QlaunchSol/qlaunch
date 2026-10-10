@@ -75,7 +75,7 @@ export type LaunchRow = {
 
 export type CoinRow = Pick<
   LaunchRow,
-  "mint" | "name" | "symbol" | "description" | "image_url" | "metadata_uri" | "twitter" | "telegram" | "creator" | "pq_address" | "leaf" | "dev_tokens" | "tx_signature" | "created_at" | "launched_at"
+  "mint" | "name" | "symbol" | "description" | "image_url" | "metadata_uri" | "twitter" | "telegram" | "creator" | "pq_address" | "leaf" | "dev_tokens" | "tx_signature" | "created_at" | "launched_at" | "digest"
 > & {
   price_usd: number | null;
   market_cap_usd: number | null;
@@ -266,7 +266,7 @@ export type CoinDetailRow = CoinRow & { digest: string; signature: string; leaf_
 /** A visible coin, its attestation, and the registry's record of the one-time key it used. */
 export async function coinByMint(mint: string): Promise<CoinDetailRow | null> {
   const [row] = await sql()<CoinDetailRow[]>`
-    select c.*, l.digest, l.signature, u.purpose as leaf_purpose, u.ref as leaf_ref, u.digest as leaf_digest
+    select c.*, l.signature, u.purpose as leaf_purpose, u.ref as leaf_ref, u.digest as leaf_digest
     from coins c join launches l using (mint)
     left join leaf_uses u on u.identity_id = l.identity_id and u.leaf = l.leaf
     where c.mint = ${mint}`;

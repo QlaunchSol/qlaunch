@@ -22,6 +22,7 @@ export function coinJson(c: CoinRow): Coin {
     creator: c.creator,
     pqAddress: c.pq_address,
     leaf: c.leaf,
+    digest: c.digest,
     devTokens: c.dev_tokens == null ? null : Number(c.dev_tokens),
     txSignature: c.tx_signature,
     launchedAt: c.launched_at ?? c.created_at,

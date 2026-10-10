@@ -146,11 +146,13 @@ export function Stat({ label, value, sub }: { label: ReactNode; value: ReactNode
   );
 }
 
-export function Progress({ value, className }: { value: number; className?: string }) {
+export function Progress({ value, className, shimmer }: { value: number; className?: string; shimmer?: boolean }) {
   const pct = Math.max(0, Math.min(100, value * 100));
   return (
     <div className={cx("h-1.5 overflow-hidden rounded-full bg-panel-3", className)} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-      <div className="h-full rounded-full bg-gradient-to-r from-mint-2 to-mint transition-[width] duration-500" style={{ width: `${pct}%` }} />
+      <div className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-ice/80 via-mint-2 to-mint transition-[width] duration-500" style={{ width: `${pct}%`, minWidth: pct > 0 ? 6 : 0 }}>
+        {shimmer && <span aria-hidden className="absolute inset-y-0 left-0 w-1/2 animate-shimmer bg-gradient-to-r from-transparent via-white/45 to-transparent" />}
+      </div>
     </div>
   );
 }

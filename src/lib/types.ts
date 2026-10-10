@@ -32,6 +32,8 @@ export type Coin = {
   creator: string;
   pqAddress: string;
   leaf: number;
+  /** The launch digest its one-time key signed (hex). */
+  digest: string;
   /** Tokens the launcher bought in the creation transaction, as read from chain. */
   devTokens: number | null;
   txSignature: string | null;
