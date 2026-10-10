@@ -1,0 +1,24 @@
+# External uptime check: qlaunch.xyz must answer its health endpoint and home page.
+# A failed run shows red in the Actions tab and GitHub emails the failure.
+name: uptime
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: qlaunch.xyz is up
+        run: |
+          for attempt in 1 2 3; do
+            if curl -fsS --max-time 15 https://qlaunch.xyz/api/health | grep -q '"ok":true' \
+              && curl -fsS --max-time 20 -o /dev/null https://qlaunch.xyz/; then
+              echo "up (attempt $attempt)"; exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::qlaunch.xyz failed its health check 3 times in a row"
+          exit 1

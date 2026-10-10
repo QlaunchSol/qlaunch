@@ -151,6 +151,9 @@ Drop `SEND=fork` to send for real on devnet (the wallet needs devnet SOL).
 ## Operations
 
 - **Health:** `GET /api/health` answers `{"ok":true}` when the app and database are up.
+  `.github/workflows/uptime.yml` checks it (and the home page) from GitHub every 5 minutes; a failure shows red
+  in the Actions tab and GitHub emails it. On the server, `launchpad-watchdog.timer` (`deploy/watchdog.sh`) restarts
+  the app if it fails 3 checks in a row, a minute apart.
 - **Logs:** `journalctl -u launchpad -f`.
 - **Backups:** `launchpad-backup.timer` dumps the database hourly to `~/backups` (72 kept, each checked with
   `pg_restore --list` before it replaces anything). They live on this machine: copy them elsewhere too. Restore with

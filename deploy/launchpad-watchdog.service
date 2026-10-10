@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart launchpad if it stops answering its health check
+After=launchpad.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/deploy/launchpad/deploy/watchdog.sh
