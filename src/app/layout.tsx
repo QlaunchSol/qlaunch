@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
+import { OfficialBanner } from "@/components/official-coin";
+import { officialCoin } from "@/lib/server/official";
 import { Footer } from "@/components/footer";
 import { Navbar } from "@/components/navbar";
 import { Providers } from "@/components/providers";
@@ -23,6 +25,7 @@ export const viewport: Viewport = { themeColor: "#07090b", colorScheme: "dark" }
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Reading the per-request nonce renders every page dynamically, so each gets its own (see proxy.ts).
   await headers();
+  const official = await officialCoin();
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
@@ -32,6 +35,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               Devnet staging: coins, SOL and fees here are test tokens with no value. Switch your wallet to devnet to try it.
             </div>
           )}
+          {official && <OfficialBanner coin={official} siteName={site.name} />}
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
