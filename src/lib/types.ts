@@ -34,7 +34,7 @@ export type Coin = {
   leaf: number;
   /** The launch digest its one-time key signed (hex). */
   digest: string;
-  /** The project's own coin (OFFICIAL_MINT). */
+  /** The project's own coin (site.officialCoin). */
   official: boolean;
   /** Tokens the launcher bought in the creation transaction, as read from chain. */
   devTokens: number | null;

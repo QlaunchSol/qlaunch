@@ -1,6 +1,7 @@
 import "server-only";
 import { cached } from "./cache";
 import { coinByMint, coinPage, counts, identityByAddress, type CoinRow } from "./db";
+import { site } from "@/config/site";
 import type { Coin, CoinList, PlatformStats, TokenDetail } from "@/lib/types";
 import { identityJson } from "./identity";
 
@@ -23,7 +24,7 @@ export function coinJson(c: CoinRow): Coin {
     pqAddress: c.pq_address,
     leaf: c.leaf,
     digest: c.digest,
-    official: Boolean(process.env.OFFICIAL_MINT) && c.mint === process.env.OFFICIAL_MINT,
+    official: c.mint === site.officialCoin.mint,
     devTokens: c.dev_tokens == null ? null : Number(c.dev_tokens),
     txSignature: c.tx_signature,
     launchedAt: c.launched_at ?? c.created_at,

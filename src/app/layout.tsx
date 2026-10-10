@@ -35,7 +35,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               Devnet staging: coins, SOL and fees here are test tokens with no value. Switch your wallet to devnet to try it.
             </div>
           )}
-          {official && <OfficialBanner coin={official} siteName={site.name} />}
+          {official && <OfficialBanner coin={official} />}
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />

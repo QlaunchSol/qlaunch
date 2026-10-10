@@ -8,7 +8,7 @@ import { CopyButton } from "./ui";
 export function OfficialCoinCA({ coin, className }: { coin: OfficialCoin; className?: string }) {
   return (
     <div className={cx("flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs", className)}>
-      <span className="text-faint">{coin.symbol ? `$${coin.symbol}` : "Official coin"} CA</span>
+      <span className="text-faint">${coin.symbol} CA</span>
       <span className="break-all text-fg">{coin.mint}</span>
       <CopyButton value={coin.mint} />
       <a href={pumpUrl(coin.mint)} target="_blank" rel="noreferrer" className="text-faint transition-colors hover:text-fg">
@@ -23,8 +23,8 @@ export function OfficialCoinCA({ coin, className }: { coin: OfficialCoin; classN
  * full (impostors mimic the first and last characters), so nobody mistakes a
  * copycat coin for the project's own.
  */
-export function OfficialBanner({ coin, siteName }: { coin: OfficialCoin; siteName: string }) {
-  const label = coin.symbol ? `$${coin.symbol}` : `${siteName} coin`;
+export function OfficialBanner({ coin }: { coin: OfficialCoin }) {
+  const label = `$${coin.symbol}`;
   return (
     <div className="relative overflow-hidden border-b border-mint/30 bg-mint-dim/60">
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shimmer bg-gradient-to-r from-transparent via-mint/10 to-transparent" />
