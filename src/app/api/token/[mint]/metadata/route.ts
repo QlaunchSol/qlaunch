@@ -13,12 +13,13 @@ export const GET = route(async (_request: Request, ctx: { params: Promise<{ mint
   if (!isPubkey(mint)) bad("Invalid mint");
   const row = await launchByMint(mint);
   if (!row || row.hidden) bad("Unknown coin", 404);
-  const text = await cached(`metadata:${mint}`, 3600_000, async () => {
+  // IPFS content never changes: cache it long, every fetch counts against the gateway's request quota.
+  const text = await cached(`metadata:${mint}`, 7 * 86_400_000, async () => {
     const res = await fetch(row!.metadata_uri, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) bad("Couldn't fetch the metadata from IPFS right now", 502);
     const body = await res.text();
     if (body.length > 64_000) bad("Metadata too large", 502);
     return body;
   });
-  return new Response(text, { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600", "X-Metadata-Uri": row!.metadata_uri } });
+  return new Response(text, { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=86400", "X-Metadata-Uri": row!.metadata_uri } });
 });
