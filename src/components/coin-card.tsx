@@ -25,7 +25,7 @@ export function CoinCard({ coin, fresh }: { coin: Coin; fresh?: boolean }) {
 
       <div className="relative flex gap-3">
         <div className="relative shrink-0">
-          <CoinImage src={coin.image} alt={coin.name} className="size-16 rounded-xl ring-1 ring-line transition-transform duration-500 group-hover:scale-[1.06] group-hover:ring-mint/40" />
+          <CoinImage src={coin.image} thumb={160} alt={coin.name} className="size-16 rounded-xl ring-1 ring-line transition-transform duration-500 group-hover:scale-[1.06] group-hover:ring-mint/40" />
           <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border border-mint/40 bg-bg text-mint shadow-[0_0_10px_rgb(94_240_182/0.35)]">
             <ShieldCheck className="size-3" aria-label="Post-quantum attested" />
           </span>

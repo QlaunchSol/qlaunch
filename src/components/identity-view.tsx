@@ -238,7 +238,7 @@ function RegisteredView() {
               {launches.map((l) => (
                 <li key={l.mint}>
                   <Link href={`/coin/${l.mint}`} className="flex items-center gap-3 px-5 py-3 hover:bg-panel-2">
-                    <CoinImage src={l.image_url} alt={l.name} className="size-9 rounded-md" />
+                    <CoinImage src={l.image_url} thumb={96} alt={l.name} className="size-9 rounded-md" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm text-fg">{l.name}</div>
                       <div className="font-mono text-xs text-faint">

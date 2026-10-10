@@ -3,8 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { cx } from "./ui";
 
-/** Coin art from IPFS, with a ticker-free placeholder while loading or if the gateway fails. */
-export function CoinImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+/**
+ * Coin art from IPFS, with a ticker-free placeholder while loading or if the gateway fails.
+ * `thumb`: ask the gateway for a resized copy this many pixels wide (a 64 px card needs ~20 KB,
+ * not the ~200 KB original; saves gateway bandwidth). Thumbnails are static: animated art only
+ * moves at full size, on the coin page.
+ */
+export function CoinImage({ src: original, alt, className, thumb }: { src: string; alt: string; className?: string; thumb?: number }) {
+  const src = thumb && /\/ipfs\/[a-z0-9]+$/.test(original) ? `${original}?img-width=${thumb}` : original;
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const img = useRef<HTMLImageElement>(null);
