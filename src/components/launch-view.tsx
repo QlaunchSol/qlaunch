@@ -191,6 +191,23 @@ export function LaunchView() {
   const canLaunch = Boolean(cleaned.form && !devBuyError && keys && !busy && remaining > 0 && !lowBalance);
 
   /** Polls until chain confirms or rejects the coin; survives server restarts and blips. */
+  /**
+   * Hands the signed transaction to the server, which sends it. Sending the same signed transaction again is
+   * harmless (one signature, one landing), so a server that is briefly unreachable (a deploy restarts it in
+   * ~2 s) is retried for a while rather than abandoning a launch the user already signed.
+   */
+  const submitLaunch = useCallback(async (mint: string, transaction: string) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await api<{ status: string; signature?: string }>("/api/launch/submit", { body: { mint, transaction } });
+      } catch (err) {
+        const transient = !(err instanceof ApiError) || [502, 503, 504].includes(err.status);
+        if (!transient || attempt >= 6 || !mounted.current) throw err;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+  }, []);
+
   const awaitLive = useCallback(async (mint: string): Promise<{ status: string; reason?: string }> => {
     for (let i = 0; i < 60 && mounted.current; i++) {
       const res = await api<{ status: string; reason?: string }>(`/api/launch/status?mint=${mint}`).catch(() => null);
@@ -260,9 +277,7 @@ export function LaunchView() {
       setPhase("sending");
       setSent({ mint: prepared.mint, signature: null });
       // A failure here may still have landed: confirmation is decided by polling chain, not by this response.
-      const submitted = await api<{ status: string; signature?: string }>("/api/launch/submit", {
-        body: { mint: prepared.mint, transaction: toBase64(signed.serialize()) },
-      }).catch((err: unknown) => ({ status: "unknown", error: err }));
+      const submitted = await submitLaunch(prepared.mint, toBase64(signed.serialize())).catch((err: unknown) => ({ status: "unknown", error: err }));
       if ("signature" in submitted && submitted.signature) setSent({ mint: prepared.mint, signature: submitted.signature });
 
       setPhase("confirming");
@@ -285,7 +300,7 @@ export function LaunchView() {
       setPhase("idle");
       setError(walletErrorMessage(err));
     }
-  }, [cleaned.form, keys, address, devBuySol, refresh, signTransaction, router, awaitLive]);
+  }, [cleaned.form, keys, address, devBuySol, refresh, signTransaction, router, awaitLive, submitLaunch]);
 
   const preview = useMemo(() => {
     if (!keys || !address || !cleaned.form) return null;
