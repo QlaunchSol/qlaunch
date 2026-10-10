@@ -12,6 +12,7 @@ import { pubkey } from "@/lib/server/validate";
  * Anchors the identity root on Solana with an SPL memo signed by the wallet.
  * POST {wallet}                 → unsigned memo transaction to sign
  * POST {wallet, transaction}    → sends it, confirms, records slot and time
+ * POST {wallet, signature}      → re-checks an anchor that was sent but hadn't confirmed
  */
 export const POST = route(async (request) => {
   await rateLimit(`anchor:${clientIp(request)}`, 20, 3600);
@@ -21,25 +22,33 @@ export const POST = route(async (request) => {
   if (identity.anchor_tx) return Response.json(await identityDetail(identity));
   const memo = anchorMemo(identity.pq_address, identity.root);
 
-  if (!body.transaction) {
+  if (!body.transaction && !body.signature) {
     const ix = new TransactionInstruction({ programId: MEMO_PROGRAM_ID, keys: [{ pubkey: new PublicKey(wallet), isSigner: true, isWritable: false }], data: Buffer.from(memo, "utf8") });
     // The Memo program costs ~66k CU for this 145-byte memo (measured on a mainnet fork).
     const tx = await buildTx(new PublicKey(wallet), [ix], 100_000);
     return Response.json({ transaction: toBase64(tx), memo });
   }
 
-  const tx = parseSigned(body.transaction);
-  if (feePayer(tx) !== wallet || !touches(tx, MEMO_PROGRAM_ID, wallet)) bad("That isn't the anchor transaction");
-  const { signature, confirmed } = await sendAndConfirm(tx);
-  if (!confirmed) return Response.json({ signature, pending: true }, { status: 202 });
+  let signature: string;
+  if (body.transaction) {
+    const tx = parseSigned(body.transaction);
+    if (feePayer(tx) !== wallet || !touches(tx, MEMO_PROGRAM_ID, wallet)) bad("That isn't the anchor transaction");
+    const sent = await sendAndConfirm(tx);
+    if (!sent.confirmed) return Response.json({ signature: sent.signature, pending: true }, { status: 202 });
+    signature = sent.signature;
+  } else {
+    // Re-check an anchor sent earlier that hadn't confirmed yet.
+    signature = typeof body.signature === "string" && /^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(body.signature) ? body.signature : bad("Invalid signature");
+  }
 
   // Re-read the landed transaction: record the anchor only if the memo on chain is exactly ours.
   let landed = null;
   for (let i = 0; i < 5 && !landed; i++) {
     landed = await getTransaction(signature);
-    if (!landed) await new Promise((r) => setTimeout(r, 1500));
+    if (!landed && body.transaction) await new Promise((r) => setTimeout(r, 1500));
   }
-  if (!landed || landed.meta?.err) bad("The anchor transaction didn't land. Try again.");
+  if (!landed) return Response.json({ signature, pending: true }, { status: 202 });
+  if (landed.meta?.err) bad("The anchor transaction failed on chain. Try again.");
   const message = landed.transaction.message;
   const keys = message.staticAccountKeys.map((k) => k.toBase58());
   const memoOnChain = message.compiledInstructions.some(

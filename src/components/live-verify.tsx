@@ -36,9 +36,9 @@ export function LiveVerify({ coins }: { coins: Coin[] }) {
       const coin = candidates[round % candidates.length];
       try {
         const detail = await fetch(`/api/token/${coin.mint}`).then((r) => r.json() as Promise<TokenDetail>);
-        const result = await verifyCoin(coin.mint, detail.identity);
+        const result = detail.coin ? await verifyCoin(detail) : null;
         if (cancelled) return;
-        if (result.trace) {
+        if (result?.trace) {
           setSubject({ label: `${coin.name} ($${coin.symbol})`, sub: `key #${coin.leaf} of ${short(coin.pqAddress, 8, 4)}`, href: `/coin/${coin.mint}`, trace: result.trace });
           return;
         }

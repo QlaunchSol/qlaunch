@@ -14,7 +14,7 @@ export type IdentityJson = {
   createdAt: string;
 };
 
-export type UsedLeaf = { leaf: number; purpose: string; ref: string | null; created_at: string };
+export type UsedLeaf = { leaf: number; purpose: string; ref: string | null; digest: string; created_at: string };
 
 export type IdentityLaunch = { mint: string; name: string; symbol: string; image_url: string; leaf: number; status: string; created_at: string; launched_at: string | null };
 
@@ -32,7 +32,8 @@ export type Coin = {
   creator: string;
   pqAddress: string;
   leaf: number;
-  devBuySol: number;
+  /** Tokens the launcher bought in the creation transaction, as read from chain. */
+  devTokens: number | null;
   txSignature: string | null;
   launchedAt: string;
   priceUsd: number | null;
@@ -48,6 +49,8 @@ export type CoinList = { coins: Coin[]; hasMore: boolean };
 export type TokenDetail = {
   coin: Coin | null;
   attestation: { digest: string; signature: string } | null;
+  /** The registry's record of the one-time key this coin used. */
+  keyUse: { purpose: string | null; ref: string | null; digest: string | null } | null;
   identity: IdentityJson | null;
 };
 

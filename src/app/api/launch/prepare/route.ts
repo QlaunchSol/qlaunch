@@ -1,77 +1,77 @@
-import { REGISTRATION_LEAF, bytesToHex, launchDigest, signatureFromBase64, verify, type LaunchFields } from "@/lib/pq";
+import { REGISTRATION_LEAF, bytesToHex, hexToBytes, isHex, launchDigest, signatureFromBase64, verify } from "@/lib/pq";
 import { rateLimit } from "@/lib/server/cache";
-import { burnLeaf, identityByWallet, insertLaunch, launchByMint, publicIdentity, setDevBuy } from "@/lib/server/db";
+import { burnLeaf, insertLaunch, launchByMint, markUploadUsed, publicIdentity } from "@/lib/server/db";
 import { bad, clientIp, readJson, route } from "@/lib/server/http";
-import { MAX_DEV_BUY_SOL, buildLaunchTx, curveExists, launchMetadata } from "@/lib/server/launch";
-import { isGatewayUrl, pinJson } from "@/lib/server/pinata";
+import { buildLaunchTx, confirmLaunch, curveExists, launchMetadata } from "@/lib/server/launch";
+import { launchFields, parseLaunchRequest } from "@/lib/server/launch-request";
+import { pinJson } from "@/lib/server/pinata";
 import { toBase64 } from "@/lib/server/tx";
-import { cleanLaunchForm } from "@/lib/fields";
-import { field, pubkey } from "@/lib/server/validate";
 
 /**
  * Verifies a launch attestation, spends its one-time key, pins the metadata and
- * returns the unsigned create transaction. Safe to retry: the same signed
- * launch (same leaf, same digest) gets a fresh transaction without re-pinning.
+ * returns the unsigned create transaction (the browser ran /preflight first).
  *
- * The mint keypair is derived in the browser from the identity seed and the
- * leaf, so the server never holds it.
+ * The key is spent the moment a valid signature arrives, before anything else
+ * can fail: a WOTS signature that left the browser must never be followed by a
+ * second one from the same key. A retry of the same signed launch (same leaf,
+ * same digest) is fine and gets a fresh transaction without re-pinning.
  */
 export const POST = route(async (request) => {
-  await rateLimit(`prepare:${clientIp(request)}`, 30, 3600);
+  await rateLimit(`prepare:${clientIp(request)}`, 30, 3600, { failClosed: true });
   const body = await readJson(request, 16_000);
-
-  const wallet = pubkey(body.wallet, "wallet");
-  const mint = pubkey(body.mint, "mint");
-  const form = field(() => cleanLaunchForm(body));
-  if (!isGatewayUrl(form.image)) bad("Upload the image first");
-  const { name, symbol, description, image, twitter, telegram } = form;
-  const devBuySol = Number(body.devBuySol ?? 0);
-  if (!Number.isFinite(devBuySol) || devBuySol < 0 || devBuySol > MAX_DEV_BUY_SOL) bad(`Dev buy must be between 0 and ${MAX_DEV_BUY_SOL} SOL`);
-
+  const req = await parseLaunchRequest(body);
   const signature = signatureFromBase64(body.signature) ?? bad("Missing post-quantum signature");
   if (signature.leaf === REGISTRATION_LEAF) bad("One-time key 0 is reserved for registration");
-
-  const identity = (await identityByWallet(wallet)) ?? bad("Register a post-quantum identity first", 403);
-  const fields: LaunchFields = { mint, creator: wallet, pqAddress: identity.pq_address, leaf: signature.leaf, name, symbol, description, image, twitter, telegram };
+  const identity = publicIdentity(req.identity);
+  const fields = launchFields(req, signature.leaf);
   const digest = bytesToHex(launchDigest(fields));
-  // Must be the exact fields the client signed; any difference fails here.
-  if (body.digest !== digest) bad("The launch details changed after signing. Sign again.");
-  if (!verify(launchDigest(fields), signature, publicIdentity(identity)).valid) bad("The post-quantum signature doesn't verify against your identity");
 
-  const existing = await launchByMint(mint);
-  if (existing && (existing.identity_id !== identity.id || existing.digest !== digest)) bad("That mint is already taken", 409);
-  if (existing?.status === "live") bad("This coin is already live", 409);
-  if (!existing && (await curveExists(mint))) bad("That mint already exists on pump.fun", 409);
+  if (!verify(hexToBytes(digest), signature, identity).valid) {
+    // Signed, but over details that normalize differently here: still a revealed signature, so spend the key.
+    if (isHex(body.digest, 32) && verify(hexToBytes(body.digest as string), signature, identity).valid) {
+      await burnLeaf({ identityId: req.identity.id, leaf: signature.leaf, purpose: "launch", digest: body.digest as string, ref: null }).catch(() => {});
+      bad("The launch details changed after signing. Your next attempt will use a fresh key.");
+    }
+    bad("The post-quantum signature doesn't verify against your identity");
+  }
+  await burnLeaf({ identityId: req.identity.id, leaf: signature.leaf, purpose: "launch", digest, ref: req.mint });
 
-  await burnLeaf({ identityId: identity.id, leaf: signature.leaf, purpose: "launch", digest, ref: mint });
+  const existing = await launchByMint(req.mint);
+  if (existing && (existing.identity_id !== req.identity.id || existing.digest !== digest)) bad("That mint is already taken", 409);
+  if (existing && (await curveExists(req.mint))) {
+    // Already landed (a lost response, a second tab): confirm instead of building another transaction.
+    return Response.json({ mint: req.mint, metadataUri: existing.metadata_uri, status: await confirmLaunch(existing) });
+  }
+  if (!existing && (await curveExists(req.mint))) bad("That mint already exists on pump.fun", 409);
 
   let uri = existing?.metadata_uri;
   if (!uri) {
     const signatureB64 = String(body.signature);
-    uri = (await pinJson(launchMetadata(fields, identity, digest, signatureB64), `${symbol}.json`)).url;
+    const pinned = await pinJson(launchMetadata(fields, req.identity, digest, signatureB64), `${req.form.symbol}.json`);
+    uri = pinned.url;
     const inserted = await insertLaunch({
-      mint,
-      identity_id: identity.id,
-      creator: wallet,
-      pq_address: identity.pq_address,
+      mint: req.mint,
+      identity_id: req.identity.id,
+      creator: req.wallet,
+      pq_address: req.identity.pq_address,
       leaf: signature.leaf,
-      name,
-      symbol,
-      description,
-      image_url: image,
+      name: req.form.name,
+      symbol: req.form.symbol,
+      description: req.form.description,
+      twitter: req.form.twitter,
+      telegram: req.form.telegram,
+      image_url: req.form.image,
       metadata_uri: uri,
-      twitter,
-      telegram,
+      metadata_pin_id: pinned.id,
       website: null,
       digest,
       signature: signatureB64,
-      dev_buy_sol: devBuySol,
+      dev_buy_sol: req.devBuySol,
     });
     if (!inserted) bad("This launch is already being prepared. Refresh and try again.", 409);
-  } else if (existing && Number(existing.dev_buy_sol) !== devBuySol) {
-    await setDevBuy(mint, devBuySol);
+    await markUploadUsed(req.form.image);
   }
 
-  const tx = await buildLaunchTx({ wallet, mint, name, symbol, uri, devBuySol });
-  return Response.json({ mint, metadataUri: uri, transaction: toBase64(tx) });
+  const tx = await buildLaunchTx({ wallet: req.wallet, mint: req.mint, name: req.form.name, symbol: req.form.symbol, uri, devBuySol: req.devBuySol });
+  return Response.json({ mint: req.mint, metadataUri: uri, transaction: toBase64(tx), status: "pending" });
 });

@@ -5,7 +5,8 @@ import { PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
 import { coinUrl, site } from "@/config/site";
 import { PROTOCOL, type LaunchFields } from "@/lib/pq";
-import { setLive, type IdentityRow } from "./db";
+import { setFailed, setLive, type IdentityRow, type LaunchRow } from "./db";
+import { verifyLaunchOnChain } from "./onchain";
 import { emitLaunch } from "./events";
 import { env } from "./env";
 import { LAMPORTS_PER_SOL, connection, pumpSdk, pumpState } from "./solana";
@@ -76,6 +77,24 @@ export async function curveExists(mint: string): Promise<boolean> {
   return (await connection().getAccountInfo(bondingCurvePda(new PublicKey(mint)))) !== null;
 }
 
-export async function markLive(mint: string, txSignature: string | null) {
-  if (await setLive(mint, txSignature)) emitLaunch(mint);
+/**
+ * Lists a launch only once chain agrees with its attestation (see onchain.ts).
+ * Returns the resulting status; a definitive mismatch fails the launch for good.
+ */
+export async function confirmLaunch(launch: LaunchRow, knownSignature?: string | null): Promise<"live" | "pending" | "failed"> {
+  if (launch.status === "live") return "live";
+  const check = await verifyLaunchOnChain(launch, knownSignature);
+  if (check.ok) {
+    if (await setLive(launch.mint, check.signature, check.devTokens)) emitLaunch(launch.mint);
+    return "live";
+  }
+  if (check.final) {
+    console.warn(`launch ${launch.mint} rejected: ${check.reason}`);
+    await setFailed(launch.mint, check.reason);
+    return "failed";
+  }
+  return "pending";
 }
+
+/** The metadata URI's exact final length (gateway + CIDv1 raw, 59 chars): lets preflight size the transaction before anything is pinned. */
+export const placeholderUri = () => `https://${env.pinataGateway()}/ipfs/bafkrei${"a".repeat(52)}`;

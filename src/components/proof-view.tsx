@@ -21,7 +21,7 @@ export function ProofView({ proof, identity }: { proof: Proof; identity: Identit
       {proof.note && (
         <Panel className="p-5">
           <div className="text-[11px] uppercase tracking-wider text-faint">Signed note</div>
-          <p className="mt-1 text-lg text-fg">“{proof.note}”</p>
+          <p className="mt-1 break-words text-lg text-fg">“{proof.note}”</p>
         </Panel>
       )}
       <Panel>

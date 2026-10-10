@@ -22,7 +22,7 @@ export function coinJson(c: CoinRow): Coin {
     creator: c.creator,
     pqAddress: c.pq_address,
     leaf: c.leaf,
-    devBuySol: Number(c.dev_buy_sol),
+    devTokens: c.dev_tokens == null ? null : Number(c.dev_tokens),
     txSignature: c.tx_signature,
     launchedAt: c.launched_at ?? c.created_at,
     priceUsd: c.price_usd,
@@ -56,8 +56,9 @@ export async function tokenDetail(mint: string): Promise<TokenDetail> {
     return {
       coin: coinJson(coin),
       attestation: { digest: coin.digest, signature: coin.signature },
+      keyUse: { purpose: coin.leaf_purpose, ref: coin.leaf_ref, digest: coin.leaf_digest },
       identity: identity ? identityJson(identity) : null,
     };
   });
-  return found ?? { coin: null, attestation: null, identity: null };
+  return found ?? { coin: null, attestation: null, keyUse: null, identity: null };
 }

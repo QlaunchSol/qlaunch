@@ -89,11 +89,11 @@ function CreateFlow() {
           </label>
           {usePassphrase && (
             <div className="space-y-3">
-              <Field label="Passphrase" error={weak ? "Use at least 12 characters: a few random words works well." : null}>
-                <PassphraseInput value={passphrase} onChange={setPassphrase} placeholder="at least 12 characters" />
+              <Field label="Passphrase" htmlFor="new-passphrase" error={weak ? "Use at least 12 characters: a few random words works well." : null}>
+                <PassphraseInput id="new-passphrase" label="Passphrase" value={passphrase} onChange={setPassphrase} placeholder="at least 12 characters" />
               </Field>
-              <Field label="Confirm passphrase" error={mismatch ? "Passphrases don't match" : null}>
-                <PassphraseInput value={confirm} onChange={setConfirm} />
+              <Field label="Confirm passphrase" htmlFor="confirm-passphrase" error={mismatch ? "Passphrases don't match" : null}>
+                <PassphraseInput id="confirm-passphrase" label="Confirm passphrase" value={confirm} onChange={setConfirm} />
               </Field>
               <Notice tone="warn">There is no recovery. Lose the passphrase and this identity is gone for good (your wallet and coins are unaffected).</Notice>
             </div>
@@ -271,7 +271,7 @@ function RegisteredView() {
 
 export function IdentityView() {
   const { address, connect } = useWallet();
-  const { detail } = useIdentity();
+  const { detail, lookupError, refresh } = useIdentity();
   return (
     <div className="mx-auto max-w-6xl space-y-8 px-4 py-10">
       <SectionTitle
@@ -284,6 +284,13 @@ export function IdentityView() {
           <p className="text-sm text-muted">Connect a Solana wallet to create or open your identity.</p>
           <Button className="mt-4" onClick={connect}>
             Connect wallet
+          </Button>
+        </Panel>
+      ) : detail === undefined && lookupError ? (
+        <Panel className="space-y-3 p-8 text-center">
+          <p className="text-sm text-bad">Couldn&apos;t load your identity: {lookupError}</p>
+          <Button variant="secondary" onClick={() => refresh().catch(() => {})}>
+            Try again
           </Button>
         </Panel>
       ) : detail === undefined ? (

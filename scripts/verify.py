@@ -2,8 +2,9 @@
 """
 Independent verifier for pqlaunch-v1 launch attestations. Standard library only.
 
-    python3 scripts/verify.py <coin page URL | metadata URL | metadata.json>
-    python3 scripts/verify.py --vectors scripts/vectors/launch.json
+    python3 verify.py <mint or coin page URL> [--rpc URL]      the coin's metadata URI is read from chain
+    python3 verify.py <metadata URL | metadata.json> --mint <mint>
+    python3 verify.py --vectors scripts/vectors/launch.json
 
 Written from the protocol description, not translated from the TypeScript, so
 the two implementations check each other. Nothing here touches an elliptic
@@ -103,6 +104,8 @@ def pq_address(root: bytes, pub_seed: bytes, height: int, epoch: int) -> str:
 
 
 def check(identity: dict, fields: dict, signature_b64: str) -> bool:
+    if not isinstance(fields["leaf"], int) or isinstance(fields["leaf"], bool) or fields["leaf"] < 1:
+        return False  # key 0 only ever signs the registration
     root, seed = bytes.fromhex(identity["root"]), bytes.fromhex(identity["pubSeed"])
     height, epoch = identity["height"], identity.get("epoch", 0)
     address_ok = pq_address(root, seed, height, epoch) == identity["address"] == fields["pqAddress"]
@@ -111,16 +114,22 @@ def check(identity: dict, fields: dict, signature_b64: str) -> bool:
     return address_ok and leaf_ok and verify(launch_digest(fields), sig, root, seed, height, epoch)
 
 
-def from_metadata(meta: dict) -> bool:
+def from_metadata(meta: dict, mint: str) -> bool:
     pq = meta["pq"]
+    if pq.get("protocol") != PROTOCOL.decode():
+        print("INVALID: unknown protocol", pq.get("protocol"))
+        return False
+    if pq.get("mint") != mint:
+        print(f"INVALID: this attestation is for mint {pq.get('mint')}, not {mint}")
+        return False
     fields = {
-        "mint": pq["mint"], "creator": pq["creator"], "pqAddress": pq["identity"]["address"], "leaf": pq["leaf"],
+        "mint": mint, "creator": pq["creator"], "pqAddress": pq["identity"]["address"], "leaf": pq["leaf"],
         "name": meta["name"], "symbol": meta["symbol"], "description": meta.get("description", ""),
         "image": meta["image"], "twitter": meta.get("twitter", ""), "telegram": meta.get("telegram", ""),
     }
     ok = check(pq["identity"], fields, pq["signature"])
-    print(f"{meta['name']} (${meta['symbol']})  mint {pq['mint']}")
-    print(f"identity {pq['identity']['address']}  leaf {pq['leaf']}")
+    print(f"{meta['name']} (${meta['symbol']})  mint {mint}")
+    print(f"identity {pq['identity']['address']}  leaf {pq['leaf']}  launcher {pq['creator']}")
     print("VALID: signed by this identity's one-time key" if ok else "INVALID")
     return ok
 
@@ -130,6 +139,29 @@ def fetch_json(url: str):
     req = urllib.request.Request(url, headers={"User-Agent": "qlaunch-verify/1.0", "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as res:
         return json.load(res)
+
+
+def onchain_metadata(mint: str, rpc: str):
+    """The mint's Token-2022 metadata (name, symbol, uri), straight from a Solana RPC."""
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "getAccountInfo", "params": [mint, {"encoding": "base64"}]}).encode()
+    req = urllib.request.Request(rpc, data=body, headers={"Content-Type": "application/json", "User-Agent": "qlaunch-verify/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as res:
+        value = json.load(res)["result"]["value"]
+    if not value:
+        sys.exit(f"{mint}: no such account on this cluster")
+    data = base64.b64decode(value["data"][0])
+    at = 166  # Token-2022 mint: 82-byte base, padding to 165, account type, then TLV extensions
+    while at + 4 <= len(data):
+        typ, length = struct.unpack("<HH", data[at : at + 4])
+        if typ == 19:  # TokenMetadata: update authority, mint, then three borsh strings
+            p, out = at + 4 + 64, []
+            for _ in range(3):
+                n = struct.unpack("<I", data[p : p + 4])[0]
+                out.append(data[p + 4 : p + 4 + n].decode())
+                p += 4 + n
+            return {"name": out[0], "symbol": out[1], "uri": out[2]}
+        at += 4 + length
+    sys.exit(f"{mint}: not a Token-2022 mint with metadata")
 
 
 def main(argv):
@@ -142,18 +174,27 @@ def main(argv):
             print(f"vector {i}: {'valid' if got else 'invalid'} (expected {'valid' if v['expect'] else 'invalid'})")
             bad += got != v["expect"]
         sys.exit(1 if bad else 0)
-    if len(argv) != 2:
+    args = argv[1:]
+    opt = lambda name, default=None: args[args.index(name) + 1] if name in args else default
+    rpc = opt("--rpc", "https://api.mainnet-beta.solana.com")
+    positional = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or args[i - 1] not in ("--rpc", "--mint"))]
+    if len(positional) != 1:
         sys.exit(__doc__)
-    src = argv[1]
-    if src.startswith("http"):
-        if "/coin/" in src:  # a coin page: ask the site for the metadata URI
-            mint = src.rstrip("/").split("/")[-1]
-            api = src.split("/coin/")[0] + f"/api/token/{mint}"
-            src = fetch_json(api)["coin"]["metadataUri"]
-        meta = fetch_json(src)
+    src = positional[0]
+    mint = opt("--mint")
+    if "/coin/" in src or (not src.startswith("http") and not src.endswith(".json")):
+        # A coin: trust only the chain for where its metadata lives.
+        mint = src.rstrip("/").split("/")[-1].split("?")[0]
+        chain = onchain_metadata(mint, rpc)
+        meta = fetch_json(chain["uri"])
+        if (meta.get("name"), meta.get("symbol")) != (chain["name"], chain["symbol"]):
+            print(f"INVALID: on chain this coin is {chain['name']} (${chain['symbol']}), its metadata says {meta.get('name')} (${meta.get('symbol')})")
+            sys.exit(1)
     else:
-        meta = json.load(open(src))
-    sys.exit(0 if from_metadata(meta) else 1)
+        if not mint:
+            sys.exit("pass --mint <mint>: an attestation means nothing until it's bound to a coin")
+        meta = fetch_json(src) if src.startswith("http") else json.load(open(src))
+    sys.exit(0 if from_metadata(meta, mint) else 1)
 
 
 if __name__ == "__main__":

@@ -32,7 +32,6 @@ const pump = createRequire(import.meta.url)("@pump-fun/pump-sdk");
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3000";
 const RPC = process.env.RPC_URL ?? "https://api.devnet.solana.com";
-const SITE = process.env.SITE_NAME ?? "Qlaunch";
 const WALLET = process.env.WALLET ?? "/tmp/e2e-wallet.json";
 const PASSPHRASE = "e2e correct horse battery";
 const FORK = process.env.SEND === "fork";
@@ -100,7 +99,7 @@ async function main() {
   const pubSeed = bytesToHex(keys.pubSeed);
   console.log(`  ${keys.address}`);
 
-  const statement = registrationStatement({ site: SITE, wallet: addr, pqAddress: keys.address, root, pubSeed, epoch: 0 });
+  const statement = registrationStatement({ wallet: addr, pqAddress: keys.address, root, pubSeed, epoch: 0 });
   const regBody = { wallet: addr, root, pubSeed, statement, walletSignature: bs58.encode(signText(kp, statement)), signature: signatureToBase64(sign(keys, 0, registrationDigest(statement))) };
 
   const badReg = await call("/api/identity/register", { ...regBody, walletSignature: bs58.encode(new Uint8Array(64)) });
@@ -110,7 +109,7 @@ async function main() {
   const again = await call("/api/identity/register", regBody);
   ok(again.status === 200, "re-registering the same identity is idempotent");
   const other = await generateIdentity(await deriveSeed(signText(kp, seedMessage(addr)), addr, "a different passphrase"));
-  const otherStatement = registrationStatement({ site: SITE, wallet: addr, pqAddress: other.address, root: bytesToHex(other.root), pubSeed: bytesToHex(other.pubSeed), epoch: 0 });
+  const otherStatement = registrationStatement({ wallet: addr, pqAddress: other.address, root: bytesToHex(other.root), pubSeed: bytesToHex(other.pubSeed), epoch: 0 });
   const clash = await call("/api/identity/register", {
     wallet: addr,
     root: bytesToHex(other.root),
@@ -154,9 +153,22 @@ async function main() {
 
   console.log("launch");
   const used = new Set<number>(((await call(`/api/identity?wallet=${addr}`)).json.usedLeaves ?? []).map((u: { leaf: number }) => u.leaf));
-  const leaf = [...Array(256).keys()].find((i) => i > 0 && !used.has(i))!;
+  const form2 = { name: `E2E Coin ${Date.now() % 100000}`, symbol: `E2E${Date.now() % 1000}`, description: "End-to-end test coin. Ünïcödé ✓", image: up.json.url, twitter: "https://x.com/example", telegram: "" };
+  // Like the browser: preflight each candidate key before signing; skip keys the server or chain knows as spent.
+  let leaf = 0;
+  for (let candidate = 1; candidate < 256 && !leaf; candidate++) {
+    if (used.has(candidate)) continue;
+    const m = Keypair.fromSecretKey(mintSecret(keys, candidate).secretKey);
+    const pre = await call("/api/launch/preflight", { wallet: addr, mint: m.publicKey.toBase58(), leaf: candidate, ...form2, devBuySol: 0.01 });
+    if (pre.status === 200) leaf = candidate;
+    else if (pre.json?.code === "key_spent") console.log(`  - key #${candidate} already spent (${pre.json.error}), skipped before signing`);
+    else {
+      ok(false, `preflight: ${pre.status} ${pre.json?.error}`);
+      process.exit(1);
+    }
+  }
+  ok(leaf > 0, `preflight passed for key #${leaf} before anything was signed`);
   const mint = Keypair.fromSecretKey(mintSecret(keys, leaf).secretKey);
-  const form2 = { name: `E2E Coin ${leaf}`, symbol: `E2E${leaf}`, description: "End-to-end test coin. Ünïcödé ✓", image: up.json.url, twitter: "https://x.com/example", telegram: "" };
   const fields = { mint: mint.publicKey.toBase58(), creator: addr, pqAddress: keys.address, leaf, ...form2 };
   const digest = launchDigest(fields);
   const signature = signatureToBase64(sign(keys, leaf, digest));
@@ -199,12 +211,13 @@ async function main() {
     const pending = await call("/api/launch/submit", { mint: fields.mint });
     ok(pending.json?.status === "live", "submit reports live");
   } else {
-    let sub = await call("/api/launch/submit", { mint: fields.mint, transaction: toBase64(tx.serialize()) });
-    for (let i = 0; sub.json?.status !== "live" && i < 20; i++) {
+    const sub = await call("/api/launch/submit", { mint: fields.mint, transaction: toBase64(tx.serialize()) });
+    let status = sub.json?.status;
+    for (let i = 0; status !== "live" && status !== "failed" && i < 30; i++) {
       await new Promise((r) => setTimeout(r, 3000));
-      sub = await call("/api/launch/submit", { mint: fields.mint });
+      status = (await call(`/api/launch/status?mint=${fields.mint}`)).json?.status;
     }
-    ok(sub.json?.status === "live", `coin live: ${fields.mint} (${sub.json?.signature ?? sub.json?.error})`);
+    ok(status === "live", `coin live and verified on chain: ${fields.mint} (${sub.json?.signature ?? sub.json?.error ?? status})`);
   }
 
   console.log("read back");
@@ -219,7 +232,8 @@ async function main() {
   console.log("independent verifier (python)");
   const py = (() => {
     try {
-      return execFileSync("python3", ["-I", "scripts/verify.py", `${BASE}/coin/${fields.mint}`], { encoding: "utf8" });
+      const rpc = RPC.includes("devnet") ? "https://api.devnet.solana.com" : "https://api.mainnet-beta.solana.com";
+      return execFileSync("python3", ["-I", "scripts/verify.py", fields.mint, "--rpc", rpc], { encoding: "utf8" });
     } catch (e) {
       return String((e as { stdout?: string }).stdout ?? e);
     }

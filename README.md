@@ -105,19 +105,26 @@ Builds in a memory-capped systemd unit (550 MB RAM, overflow to swap) so a
 build can never take the machine down, writes to `.next-build` (keeping
 Turbopack's cache: cold ~5 min, incremental ~30 s), then swaps the result
 into `.next-live`, applies pending database migrations and restarts the
-`launchpad` service (~2 s of downtime).
+`launchpad` service (~2 s of downtime). If `/api/health` doesn't answer
+after the restart, the previous build is put back automatically (the failed
+one is kept in `.next-live.failed`).
 Run other heavy commands the same way: `deploy/capped.sh npx tsc --noEmit`.
 Never run `next build` directly on a 1 GB machine.
 
-Caddy serves HTTPS (`deploy/Caddyfile` → `/etc/caddy/Caddyfile`). For a real
-domain, point its A record here and replace the hostname in the Caddyfile and
-`NEXT_PUBLIC_SITE_URL`.
+The service (`deploy/launchpad.service`) runs as the unprivileged `qlaunch`
+user, sandboxed by systemd, with read-only access to the code (ACLs) and
+listening on 127.0.0.1 only. Caddy serves HTTPS in front of it
+(`deploy/Caddyfile` → `/etc/caddy/Caddyfile`) and caps request bodies (5 MB
+for uploads, 64 KB elsewhere). For a different domain, point its A record
+here and replace the hostname in the Caddyfile and `NEXT_PUBLIC_SITE_URL`.
 
 ## Tests
 
 ```bash
 deploy/capped.sh npx vitest run                                   # protocol unit tests
 python3 -I scripts/verify.py --vectors scripts/vectors/launch.json   # independent verifier vs. vectors
+NODE_OPTIONS=--conditions=react-server deploy/capped.sh npx tsx scripts/check-image-sanitizer.mts
+                                                                  # hostile images, near-copy matching
 ```
 
 End-to-end, against a running server, with no SOL needed: transactions run
@@ -133,10 +140,33 @@ Drop `SEND=fork` to send for real on devnet (the wallet needs devnet SOL).
 
 ## Operations
 
-- **Backups:** `launchpad-backup.timer` dumps the database nightly to `~/backups` (14 kept). Copy them off the machine now and
-  then; restore with `pg_restore -d "$DATABASE_URL" --clean <file>`.
-- **Moderation:** `scripts/moderate.mts hide <mint>` removes a coin from this site (it stays on pump.fun); `show` undoes it.
+- **Health:** `GET /api/health` answers `{"ok":true}` when the app and database are up.
 - **Logs:** `journalctl -u launchpad -f`.
+- **Backups:** `launchpad-backup.timer` dumps the database hourly to `~/backups` (72 kept, each checked with
+  `pg_restore --list` before it replaces anything). They live on this machine: copy them elsewhere too. Restore with
+  `pg_restore -d "$DATABASE_URL" --clean <file>`. Use the newest dump: restoring an older one forgets one-time keys
+  spent since it was taken (browsers still refuse to reuse keys they signed with themselves).
+- **Images:** every upload is decoded and re-encoded (no EXIF or GPS, no smuggled payloads, size and frame caps) and pinned
+  to IPFS, never stored here. Uploads nobody launches with are unpinned after 6 hours; uploads are capped per visitor
+  (30/day) and in total (`UPLOADS_PER_DAY`).
+- **Moderation:** visitors report coins with the Report button. From the server
+  (`set -a; . ./.env.production; set +a` first):
+
+  ```bash
+  npx tsx scripts/moderate.mts reports              # open reports, grouped by coin
+  npx tsx scripts/moderate.mts takedown <mint> [note] # hide + unpin image and metadata + block the image
+  npx tsx scripts/moderate.mts hide <mint>          # hide from this site only; `show` undoes it
+  npx tsx scripts/moderate.mts resolve <mint> <note> # close reports without action
+  npx tsx scripts/moderate.mts blocked              # blocked images; `unblock <sha256>` allows one again
+  ```
+
+  A blocked image can't be uploaded again, byte for byte or as a near copy (re-encoded, resized, recoloured, lightly
+  cropped or watermarked; matched by perceptual hash). Coins stay on pump.fun whatever we do: this controls what this
+  site shows and what our IPFS account serves. Names and tickers containing "Qlaunch" are refused at launch.
+- **Content-Security-Policy:** a baseline (no plugins, no framing, images only from us and our gateway) is enforced on
+  every response. A strict policy (scripts only by per-request nonce, network only to us, a public Solana RPC and the
+  gateway) is sent report-only; set `CSP_ENFORCE_SCRIPTS=1` and restart to enforce it, after checking that real
+  wallet extensions still connect and sign.
 
 ## License
 

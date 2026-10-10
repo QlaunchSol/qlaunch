@@ -1,32 +1,42 @@
 "use client";
 
 import { Check, CircleMinus, RotateCw, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { verifyCoin, type CoinVerification } from "@/lib/client/verify-coin";
-import type { IdentityJson } from "@/lib/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { verifyCoin, type CoinVerification, type Verdict } from "@/lib/client/verify-coin";
+import type { TokenDetail } from "@/lib/types";
 import { VerifyAnimation } from "./verify-visual";
 import { Button, Panel, PanelHeader, Spinner, cx } from "./ui";
 
-export function VerifyPanel({ mint, identity, autoRun = true }: { mint: string; identity: IdentityJson | null; autoRun?: boolean }) {
+export function VerifyPanel({ detail, onVerdict }: { detail: TokenDetail; onVerdict?: (v: Verdict | null) => void }) {
   const [result, setResult] = useState<CoinVerification | null>(null);
   const [running, setRunning] = useState(false);
   const [round, setRound] = useState(0);
+  const detailRef = useRef(detail);
+  detailRef.current = detail;
+  const onVerdictRef = useRef(onVerdict);
+  onVerdictRef.current = onVerdict;
+  // Re-verify only when what is being verified changes, not on every data refresh.
+  const key = `${detail.coin?.mint}:${detail.identity?.root ?? ""}:${detail.attestation?.digest ?? ""}`;
 
   const run = useCallback(async () => {
     setRunning(true);
+    onVerdictRef.current?.(null);
     try {
-      setResult(await verifyCoin(mint, identity));
-      setRound((r) => r + 1);
+      const r = await verifyCoin(detailRef.current);
+      setResult(r);
+      onVerdictRef.current?.(r.verdict);
+      setRound((n) => n + 1);
     } catch {
-      setResult({ steps: [{ id: "error", title: "Verification", ok: false, detail: "Couldn't run the verification. Check your connection." }], trace: null, valid: false, metadata: null });
+      setResult({ steps: [{ id: "error", title: "Verification", ok: null, detail: "Couldn't run the verification. Check your connection and re-verify." }], trace: null, verdict: "unknown" });
+      onVerdictRef.current?.("unknown");
     } finally {
       setRunning(false);
     }
-  }, [mint, identity]);
+  }, []);
 
   useEffect(() => {
-    if (autoRun) run();
-  }, [autoRun, run]);
+    run();
+  }, [key, run]);
 
   return (
     <Panel>
@@ -67,10 +77,14 @@ export function VerifyPanel({ mint, identity, autoRun = true }: { mint: string; 
             <li
               className={cx(
                 "rounded-lg border px-3 py-2 text-sm font-medium",
-                result.valid ? "border-mint/40 bg-mint/5 text-mint" : "border-bad/40 bg-bad/5 text-bad",
+                result.verdict === "valid" ? "border-mint/40 bg-mint/5 text-mint" : result.verdict === "invalid" ? "border-bad/40 bg-bad/5 text-bad" : "border-warn/40 bg-warn/5 text-warn",
               )}
             >
-              {result.valid ? "Verified: this coin was launched by the identity above." : "Verification failed. Treat this coin's provenance as unproven."}
+              {result.verdict === "valid"
+                ? "Verified: this coin was launched by the identity above."
+                : result.verdict === "invalid"
+                  ? "Verification failed. Treat this coin's provenance as unproven."
+                  : "Couldn't finish checking right now (network). Nothing failed; re-verify in a moment."}
             </li>
           )}
         </ol>

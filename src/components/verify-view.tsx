@@ -4,7 +4,8 @@ import { Fingerprint, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PublicKey } from "@solana/web3.js";
-import { proveDigest, signatureToBase64 } from "@/lib/pq";
+import { bytesToHex, proveDigest, signatureToBase64 } from "@/lib/pq";
+import { freshLeaf, recordSignature, withKeyLock } from "@/lib/client/leaf-journal";
 import { sign } from "@/lib/pq/keys";
 import { api, walletErrorMessage } from "@/lib/client/api";
 import { useIdentity } from "@/lib/client/identity";
@@ -51,21 +52,21 @@ function VerifyCoin() {
       <Panel>
         <PanelHeader title="Verify a coin" sub="Checks the coin's post-quantum attestation end to end, in your browser." />
         <form onSubmit={submit} className="flex flex-col gap-3 p-5 sm:flex-row">
-          <input className={`${inputClass} font-mono`} placeholder="Mint address or coin link" value={input} onChange={(e) => setInput(e.target.value)} />
+          <input className={`${inputClass} font-mono`} placeholder="Mint address or coin link" aria-label="Mint address or coin link" value={input} onChange={(e) => setInput(e.target.value)} />
           <Button type="submit" loading={loading}>
             <Search className="size-4" /> Verify
           </Button>
         </form>
         {error && <p className="px-5 pb-5 text-sm text-bad">{error}</p>}
       </Panel>
-      {detail?.coin && <VerifyPanel key={detail.coin.mint} mint={detail.coin.mint} identity={detail.identity} />}
+      {detail?.coin && <VerifyPanel key={detail.coin.mint} detail={detail} />}
     </div>
   );
 }
 
 function ProveIdentity() {
   const router = useRouter();
-  const { keys, nextLeaf, refresh } = useIdentity();
+  const { keys, refresh, usedLeaves } = useIdentity();
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,11 +76,16 @@ function ProveIdentity() {
     setError(null);
     setBusy(true);
     try {
-      const leaf = nextLeaf();
-      if (leaf === null) throw new Error("All one-time keys of this identity are spent.");
-      const { challenge } = await api<{ challenge: string }>("/api/prove/challenge", { body: { address: keys.address } });
-      const signature = signatureToBase64(sign(keys, leaf, proveDigest({ pqAddress: keys.address, challenge, leaf, note: note.trim() })));
-      const { id } = await api<{ id: string }>("/api/prove/verify", { body: { address: keys.address, challenge, note: note.trim(), signature } });
+      const id = await withKeyLock(keys.address, async () => {
+        const latest = await refresh();
+        const leaf = freshLeaf(keys.address, new Set(latest?.usedLeaves.map((u) => u.leaf) ?? []));
+        if (leaf === null) throw new Error("All one-time keys of this identity are spent.");
+        const { challenge } = await api<{ challenge: string }>("/api/prove/challenge", { body: { address: keys.address } });
+        const digest = proveDigest({ pqAddress: keys.address, challenge, leaf, note: note.trim() });
+        recordSignature(keys.address, leaf, bytesToHex(digest)); // journaled before the signature exists
+        const signature = signatureToBase64(sign(keys, leaf, digest));
+        return (await api<{ id: string }>("/api/prove/verify", { body: { address: keys.address, challenge, note: note.trim(), signature } })).id;
+      });
       refresh().catch(() => {});
       router.push(`/proof/${id}`);
     } catch (err) {
@@ -99,12 +105,12 @@ function ProveIdentity() {
             This is the login that survives a curve break: the server checks a hash-based signature against your registered root and never consults
             ed25519. You get a public proof page anyone can re-verify.
           </p>
-          <Field label="Note (optional, signed with the proof)" hint="e.g. “I am the creator of $QFROG”">
-            <input className={inputClass} maxLength={140} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Field label="Note (optional, signed with the proof)" htmlFor="proof-note" hint="e.g. “I am the creator of $QFROG”">
+            <input id="proof-note" className={inputClass} maxLength={140} value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
           {error && <Notice tone="bad">{error}</Notice>}
           <Button onClick={prove} loading={busy}>
-            <Fingerprint className="size-4" /> Sign challenge with key #{nextLeaf() ?? "—"}
+            <Fingerprint className="size-4" /> Sign challenge with key #{keys ? (freshLeaf(keys.address, usedLeaves) ?? "—") : "—"}
           </Button>
         </div>
       </Panel>

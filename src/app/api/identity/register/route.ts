@@ -2,7 +2,6 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
-import { site } from "@/config/site";
 import {
   REGISTRATION_LEAF,
   bytesToHex,
@@ -40,7 +39,7 @@ export const POST = route(async (request) => {
     bad("This wallet is already registered to a different identity. Did you use a different passphrase?", 409);
   }
 
-  const statement = registrationStatement({ site: site.name, wallet, pqAddress: address, root: body.root as string, pubSeed: body.pubSeed as string, epoch });
+  const statement = registrationStatement({ wallet, pqAddress: address, root: body.root as string, pubSeed: body.pubSeed as string, epoch });
   if (body.statement !== statement) bad("Statement doesn't match the identity");
 
   let walletOk = false;

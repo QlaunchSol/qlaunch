@@ -44,3 +44,4 @@ next-env.d.ts
 /.next-live/
 /.next-live.new/
 /.next-live.old/
+/.next-live.failed/

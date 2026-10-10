@@ -11,7 +11,7 @@ import { text } from "@/lib/server/validate";
  * involved, so this keeps working after a curve break. Records a public proof.
  */
 export const POST = route(async (request) => {
-  await rateLimit(`prove:${clientIp(request)}`, 30, 3600);
+  await rateLimit(`prove:${clientIp(request)}`, 30, 3600, { failClosed: true });
   const body = await readJson(request, 16_000);
   if (!isPqAddress(body.address)) bad("Invalid pq address");
   const address = body.address as string;
@@ -22,13 +22,13 @@ export const POST = route(async (request) => {
 
   const identity = (await identityByAddress(address)) ?? bad("No registered identity at that address", 404);
   const digest = proveDigest({ pqAddress: address, challenge, leaf: signature.leaf, note });
-  // Verify before consuming the challenge, so a bad signature doesn't burn it.
   if (!verify(digest, signature, publicIdentity(identity)).valid) bad("The signature doesn't verify against this identity");
-  if ((await take(`challenge:${challenge}`)) !== address) bad("That challenge expired or was already used. Request a new one.", 410);
-
+  // A valid signature spends its key at once, even if the challenge then turns out stale:
+  // the signature has been revealed, so the key must never sign anything else.
   const digestHex = bytesToHex(digest);
   const id = randomBytes(9).toString("base64url");
   await burnLeaf({ identityId: identity.id, leaf: signature.leaf, purpose: "prove", digest: digestHex, ref: id });
+  if ((await take(`challenge:${challenge}`)) !== address) bad("That challenge expired or was already used. Request a new one; this key is now spent.", 410);
   await insertProof({ id, identity_id: identity.id, pq_address: address, leaf: signature.leaf, challenge, note, digest: digestHex, signature: String(body.signature) });
   return Response.json({ id }, { status: 201 });
 });

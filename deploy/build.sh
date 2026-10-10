@@ -44,19 +44,34 @@ fi
 # Database schema first (each migration runs once), so new code never meets an old schema.
 (set -a; . ./.env.production; set +a; node_modules/.bin/tsx scripts/migrate.mts)
 
-# Swap in: copy everything but the build cache, then restart (a few seconds of downtime).
+# Swap in, keeping the previous build until the new one answers /api/health;
+# if it doesn't, roll back to the previous build.
 rm -rf .next-live.new
 rsync -a --exclude cache .next-build/ .next-live.new/
+mkdir -p .next-live.new/cache
+setfacl -R -m u:qlaunch:rX .next-live.new && setfacl -m u:qlaunch:rwX .next-live.new/cache
+healthy() {
+  for i in $(seq 1 40); do
+    [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health)" = 200 ] && return 0
+    sleep 1
+  done
+  return 1
+}
 sudo systemctl stop launchpad
 rm -rf .next-live.old
 [ -d .next-live ] && mv .next-live .next-live.old
 mv .next-live.new .next-live
 sudo systemctl start launchpad
-rm -rf .next-live.old
-for i in $(seq 1 30); do
-  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
-  [ "$code" = "200" ] && { echo "live: http 200 after ${i}s"; exit 0; }
-  sleep 1
-done
-echo "site did not come back healthy; check: journalctl -u launchpad -n 50" >&2
+if healthy; then
+  rm -rf .next-live.old
+  echo "live: healthy"
+  exit 0
+fi
+echo "new build is unhealthy (journalctl -u launchpad -n 50)" >&2
+if [ -d .next-live.old ]; then
+  sudo systemctl stop launchpad
+  rm -rf .next-live.failed && mv .next-live .next-live.failed && mv .next-live.old .next-live
+  sudo systemctl start launchpad
+  healthy && echo "rolled back to the previous build; the failed one is in .next-live.failed" >&2
+fi
 exit 1

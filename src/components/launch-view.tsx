@@ -2,58 +2,76 @@
 
 import { Keypair, VersionedTransaction } from "@solana/web3.js";
 import { Check, ImagePlus, Rocket, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { site } from "@/config/site";
+import { explorerTx, site } from "@/config/site";
 import { FieldError, cleanLaunchForm, type LaunchForm } from "@/lib/fields";
 import { LIMITS, bytesToHex, launchDigest, signatureToBase64 } from "@/lib/pq";
 import { fromBase64, toBase64 } from "@/lib/pq/bytes";
-import { mintSecret, sign } from "@/lib/pq/keys";
+import { mintSecret, sign, type IdentityKeys } from "@/lib/pq/keys";
 import { ApiError, api, walletErrorMessage } from "@/lib/client/api";
 import { useIdentity } from "@/lib/client/identity";
+import { inspectLaunchTx } from "@/lib/client/inspect-tx";
+import { freshLeaf, markSpent, recordSignature, signedKeys, withKeyLock } from "@/lib/client/leaf-journal";
 import { useWallet } from "@/lib/client/wallet";
 import { short } from "@/lib/format";
 import { RequireKeys } from "./unlock";
 import { Badge, Button, Field, Notice, Panel, PanelHeader, SectionTitle, Spinner, cx, inputClass } from "./ui";
 
 const MAX_DEV_BUY = 20;
-type Phase = "idle" | "signing" | "preparing" | "wallet" | "sending" | "confirming" | "done";
+type Phase = "idle" | "checking" | "signing" | "preparing" | "wallet" | "sending" | "confirming" | "sent" | "done";
 const PHASES: { id: Phase; label: string }[] = [
+  { id: "checking", label: "Check the launch" },
   { id: "signing", label: "Sign with a one-time key" },
   { id: "preparing", label: "Pin metadata to IPFS" },
   { id: "wallet", label: "Approve in your wallet" },
   { id: "sending", label: "Send to Solana" },
-  { id: "confirming", label: "Confirm the coin" },
+  { id: "confirming", label: "Confirm on chain" },
 ];
+const IN_FLIGHT: Phase[] = ["signing", "preparing", "wallet", "sending", "confirming"];
 
-/** A launch that reached the server keeps its key and mint: retrying it never wastes a key. */
-type Attempt = { wallet: string; leaf: number; form: string };
-const ATTEMPT_KEY = "pq:launch-attempt";
-const loadAttempt = (): Attempt | null => {
-  try {
-    return JSON.parse(sessionStorage.getItem(ATTEMPT_KEY) ?? "null");
-  } catch {
-    return null;
+const mintOf = (keys: IdentityKeys, leaf: number) => Keypair.fromSecretKey(mintSecret(keys, leaf).secretKey);
+const fieldsFor = (keys: IdentityKeys, wallet: string, form: LaunchForm, leaf: number) => ({
+  mint: mintOf(keys, leaf).publicKey.toBase58(),
+  creator: wallet,
+  pqAddress: keys.address,
+  leaf,
+  ...form,
+});
+
+/**
+ * The key this launch should use: a key this browser already signed these
+ * exact details with (a retry: same digest, harmless), otherwise a key neither
+ * this browser nor the registry has ever used.
+ */
+function chooseLeaf(keys: IdentityKeys, wallet: string, form: LaunchForm, serverUsed: Set<number>, skip: Set<number> = new Set()): number | null {
+  for (const [leaf, digest] of signedKeys(keys.address)) {
+    if (leaf > 0 && !skip.has(leaf) && bytesToHex(launchDigest(fieldsFor(keys, wallet, form, leaf))) === digest) return leaf;
   }
-};
-const saveAttempt = (a: Attempt | null) => {
-  try {
-    if (a) sessionStorage.setItem(ATTEMPT_KEY, JSON.stringify(a));
-    else sessionStorage.removeItem(ATTEMPT_KEY);
-  } catch {}
-};
+  return freshLeaf(keys.address, new Set([...serverUsed, ...skip]));
+}
 
-function ImagePicker({ url, onUrl }: { url: string; onUrl: (url: string) => void }) {
+function ImagePicker({ url, onUploaded, onPreview }: { url: string; onUploaded: (url: string) => void; onPreview: (src: string | null) => void }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const sequence = useRef(0);
+
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
 
   const upload = async (file: File) => {
     setError(null);
     if (file.size > 4 * 1024 * 1024) return setError("Image must be 4 MB or smaller");
     if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) return setError("Use a PNG, JPEG, GIF or WebP image");
-    setPreview(URL.createObjectURL(file));
+    const mine = ++sequence.current; // only the latest choice may win
+    const local = URL.createObjectURL(file);
+    setPreview(local);
+    onPreview(local);
+    onUploaded("");
     setUploading(true);
     try {
       const form = new FormData();
@@ -61,17 +79,17 @@ function ImagePicker({ url, onUrl }: { url: string; onUrl: (url: string) => void
       const res = await fetch("/api/upload", { method: "POST", body: form });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error ?? "Upload failed");
-      onUrl(json.url);
+      if (mine === sequence.current) onUploaded(json.url);
     } catch (err) {
+      if (mine !== sequence.current) return;
       setError(err instanceof Error ? err.message : "Upload failed");
       setPreview(null);
-      onUrl("");
+      onPreview(null);
     } finally {
-      setUploading(false);
+      if (mine === sequence.current) setUploading(false);
     }
   };
 
-  const shown = preview ?? (url || null);
   return (
     <div className="space-y-1.5">
       <span className="block text-xs font-medium text-muted">Image</span>
@@ -84,11 +102,12 @@ function ImagePicker({ url, onUrl }: { url: string; onUrl: (url: string) => void
           const f = e.dataTransfer.files[0];
           if (f) upload(f);
         }}
+        aria-label="Choose coin image"
         className="group relative flex aspect-square w-40 items-center justify-center overflow-hidden rounded-xl border border-dashed border-line-2 bg-panel-2 transition-colors hover:border-mint/50"
       >
-        {shown ? (
+        {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={shown} alt="Coin image" className="size-full object-cover" />
+          <img src={preview} alt="Coin image" className="size-full object-cover" />
         ) : (
           <span className="flex flex-col items-center gap-2 text-xs text-faint group-hover:text-muted">
             <ImagePlus className="size-6" />
@@ -97,7 +116,7 @@ function ImagePicker({ url, onUrl }: { url: string; onUrl: (url: string) => void
         )}
         {uploading && (
           <span className="absolute inset-0 flex items-center justify-center bg-bg/60 text-xs text-fg">
-            <Spinner className="mr-2" /> Pinning…
+            <Spinner className="mr-2" /> Uploading…
           </span>
         )}
         {url && !uploading && (
@@ -107,7 +126,11 @@ function ImagePicker({ url, onUrl }: { url: string; onUrl: (url: string) => void
         )}
       </button>
       <input ref={input} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
-      {error ? <p className="text-xs text-bad">{error}</p> : <p className="text-xs text-faint">PNG, JPEG, GIF or WebP, up to 4 MB. Square looks best.</p>}
+      {error ? (
+        <p className="text-xs text-bad">{error}</p>
+      ) : (
+        <p className="max-w-56 text-xs text-faint">PNG, JPEG, GIF or WebP, up to 4 MB. Square looks best. It&apos;s re-encoded and stripped of metadata (like GPS) before it&apos;s published.</p>
+      )}
     </div>
   );
 }
@@ -115,13 +138,17 @@ function ImagePicker({ url, onUrl }: { url: string; onUrl: (url: string) => void
 export function LaunchView() {
   const router = useRouter();
   const { address, signTransaction } = useWallet();
-  const { keys, detail, nextLeaf, refresh, remaining } = useIdentity();
+  const { keys, detail, refresh, remaining, usedLeaves } = useIdentity();
   const [raw, setRaw] = useState({ name: "", symbol: "", description: "", image: "", twitter: "", telegram: "" });
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [devBuy, setDevBuy] = useState("0");
   const [acknowledged, setAcknowledged] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ mint: string; signature: string | null } | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => () => void (mounted.current = false), []);
 
   const set = (k: keyof typeof raw) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setRaw((r) => ({ ...r, [k]: e.target.value }));
 
@@ -144,75 +171,129 @@ export function LaunchView() {
         .then((b) => live && setBalance(b.sol))
         .catch(() => {});
     load();
-    const t = setInterval(load, 15_000);
+    const t = setInterval(load, 20_000);
     return () => {
       live = false;
       clearInterval(t);
     };
   }, [address]);
 
+  // Warn before leaving mid-launch: closing after signing but before sending loses the launch.
+  useEffect(() => {
+    if (!IN_FLIGHT.includes(phase)) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [phase]);
+
   const needed = devBuySol + 0.025;
   const lowBalance = balance !== null && balance < needed;
-  const busy = phase !== "idle" && phase !== "done";
-  const canLaunch = Boolean(cleaned.form && !devBuyError && acknowledged && keys && !busy && remaining > 0);
+  const busy = phase !== "idle" && phase !== "done" && phase !== "sent";
+  const canLaunch = Boolean(cleaned.form && !devBuyError && acknowledged && keys && !busy && remaining > 0 && !lowBalance);
+
+  /** Polls until chain confirms or rejects the coin; survives server restarts and blips. */
+  const awaitLive = useCallback(async (mint: string): Promise<{ status: string; reason?: string }> => {
+    for (let i = 0; i < 60 && mounted.current; i++) {
+      const res = await api<{ status: string; reason?: string }>(`/api/launch/status?mint=${mint}`).catch(() => null);
+      if (res && res.status !== "pending") return res;
+      await new Promise((r) => setTimeout(r, i < 10 ? 2000 : 4000));
+    }
+    return { status: "pending" };
+  }, []);
 
   const launch = useCallback(async () => {
     if (!cleaned.form || !keys || !address) return;
+    const form = cleaned.form;
     setError(null);
-    const formJson = JSON.stringify(cleaned.form);
-    const prior = loadAttempt();
-    const reuse = prior && prior.wallet === address && prior.form === formJson ? prior.leaf : null;
-    const leaf = reuse ?? nextLeaf(prior && prior.wallet === address ? [prior.leaf] : []);
-    if (leaf === null) return setError("All 255 launch keys of this identity are spent.");
-
-    const mintKeys = mintSecret(keys, leaf);
-    const mint = Keypair.fromSecretKey(mintKeys.secretKey);
-    const fields = { mint: mint.publicKey.toBase58(), creator: address, pqAddress: keys.address, leaf, ...cleaned.form };
-
+    setSent(null);
+    setPhase("checking");
     try {
-      setPhase("signing");
-      const digest = launchDigest(fields);
-      const signature = signatureToBase64(sign(keys, leaf, digest));
-      await new Promise((r) => setTimeout(r, 250)); // let the step render
+      const prepared = await withKeyLock(keys.address, async () => {
+        const latest = await refresh();
+        const serverUsed = new Set(latest?.usedLeaves.map((u) => u.leaf) ?? []);
+        // Everything that could fail without a signature fails in preflight, before signing. A key the
+        // server or the chain already knows as spent is skipped (never signed with), and the next one tried.
+        let leaf: number | null = null;
+        let fields: ReturnType<typeof fieldsFor> | null = null;
+        let body: Record<string, unknown> = {};
+        const refused = new Set<number>();
+        for (let attempt = 0; attempt < 8 && leaf === null; attempt++) {
+          const candidate = chooseLeaf(keys, address, form, serverUsed, refused);
+          if (candidate === null) throw new Error("All 255 launch keys of this identity are spent.");
+          const f = fieldsFor(keys, address, form, candidate);
+          const b = { wallet: address, mint: f.mint, leaf: candidate, ...form, devBuySol };
+          try {
+            const pre = await api<{ status: string }>("/api/launch/preflight", { body: b });
+            if (pre.status === "live") return { mint: f.mint, status: "live" as const };
+            [leaf, fields, body] = [candidate, f, b];
+          } catch (err) {
+            if (!(err instanceof ApiError && err.code === "key_spent")) throw err;
+            markSpent(keys.address, candidate);
+            refused.add(candidate);
+          }
+        }
+        if (leaf === null || !fields) throw new Error("Couldn't find an unused one-time key. Refresh and try again.");
+        const digest = launchDigest(fields);
 
-      setPhase("preparing");
-      saveAttempt({ wallet: address, leaf, form: formJson });
-      const prepared = await api<{ transaction: string }>("/api/launch/prepare", {
-        body: { wallet: address, mint: fields.mint, ...cleaned.form, devBuySol, signature, digest: bytesToHex(digest) },
-      }).finally(() => refresh().catch(() => {}));
+        setPhase("signing");
+        recordSignature(keys.address, leaf, bytesToHex(digest)); // journaled before the signature exists
+        const signature = signatureToBase64(sign(keys, leaf, digest));
+        setPhase("preparing");
+        const res = await api<{ transaction?: string; metadataUri: string; status: string }>("/api/launch/prepare", {
+          body: { ...body, signature, digest: bytesToHex(digest) },
+        });
+        return { ...res, mint: fields.mint, leaf };
+      });
+      refresh().catch(() => {});
+      if (prepared.status === "live") {
+        setPhase("done");
+        return router.push(`/coin/${prepared.mint}?launched=1`);
+      }
+      if (!("transaction" in prepared) || !prepared.transaction) throw new Error("The server didn't return a transaction. Try again.");
 
       setPhase("wallet");
       const tx = VersionedTransaction.deserialize(fromBase64(prepared.transaction));
+      inspectLaunchTx(tx, { wallet: address, mint: prepared.mint, name: form.name, symbol: form.symbol, uri: prepared.metadataUri, devBuySol });
       // The wallet signs first (some wallets amend a transaction before signing), then the mint key.
       const signed = await signTransaction(tx);
-      signed.sign([mint]);
+      signed.sign([mintOf(keys, prepared.leaf!)]);
 
       setPhase("sending");
-      let status = await api<{ status: string }>("/api/launch/submit", { body: { mint: fields.mint, transaction: toBase64(signed.serialize()) } });
+      setSent({ mint: prepared.mint, signature: null });
+      // A failure here may still have landed: confirmation is decided by polling chain, not by this response.
+      const submitted = await api<{ status: string; signature?: string }>("/api/launch/submit", {
+        body: { mint: prepared.mint, transaction: toBase64(signed.serialize()) },
+      }).catch((err: unknown) => ({ status: "unknown", error: err }));
+      if ("signature" in submitted && submitted.signature) setSent({ mint: prepared.mint, signature: submitted.signature });
+
       setPhase("confirming");
-      for (let i = 0; status.status !== "live" && i < 20; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        status = await api<{ status: string }>("/api/launch/submit", { body: { mint: fields.mint } });
+      const result = submitted.status === "live" ? { status: "live" } : await awaitLive(prepared.mint);
+      if (!mounted.current) return;
+      if (result.status === "live") {
+        setPhase("done");
+        router.push(`/coin/${prepared.mint}?launched=1`);
+      } else if (result.status === "failed") {
+        setPhase("idle");
+        setError("reason" in result && result.reason ? `The launch was rejected: ${result.reason}` : "The launch didn't go through.");
+      } else if ("error" in submitted && submitted.status === "unknown") {
+        setPhase("idle");
+        setError(`${walletErrorMessage(submitted.error)} If the transaction did land, the coin will appear on your identity page; retrying with the same details is safe.`);
+      } else {
+        setPhase("sent");
       }
-      if (status.status !== "live") throw new Error("The transaction was sent but the coin hasn't appeared yet. It will show up on your identity page once it lands.");
-      saveAttempt(null);
-      setPhase("done");
-      refresh().catch(() => {});
-      router.push(`/coin/${fields.mint}?launched=1`);
     } catch (err) {
+      if (!mounted.current) return;
       setPhase("idle");
-      if (err instanceof ApiError && err.status === 409 && /already used/.test(err.message)) saveAttempt(null);
       setError(walletErrorMessage(err));
     }
-  }, [cleaned.form, keys, address, nextLeaf, devBuySol, refresh, signTransaction, router]);
+  }, [cleaned.form, keys, address, devBuySol, refresh, signTransaction, router, awaitLive]);
 
   const preview = useMemo(() => {
     if (!keys || !address || !cleaned.form) return null;
-    const prior = loadAttempt();
-    const leaf = prior && prior.wallet === address && prior.form === JSON.stringify(cleaned.form) ? prior.leaf : nextLeaf(prior && prior.wallet === address ? [prior.leaf] : []);
+    const leaf = chooseLeaf(keys, address, cleaned.form, usedLeaves);
     if (leaf === null) return null;
-    return { leaf, mint: Keypair.fromSecretKey(mintSecret(keys, leaf).secretKey).publicKey.toBase58() };
-  }, [keys, address, cleaned.form, nextLeaf]);
+    return { leaf, mint: mintOf(keys, leaf).publicKey.toBase58() };
+  }, [keys, address, cleaned.form, usedLeaves]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 px-4 py-10">
@@ -225,29 +306,33 @@ export function LaunchView() {
         <Panel>
           <PanelHeader title="Coin details" sub="Everything here is signed. It can't be changed after launch." />
           <div className="space-y-5 p-5">
+            <Notice tone="warn">
+              On {site.name}, every coin&apos;s on-chain creator is the {site.name} treasury, so pump.fun&apos;s creator fees on it go to the treasury, not to you, and
+              pump.fun shows the treasury as the creator. Your wallet signs and pays for the launch, and the post-quantum attestation names you as the launcher.
+            </Notice>
             <div className="flex flex-col gap-5 sm:flex-row">
-              <ImagePicker url={raw.image} onUrl={(image) => setRaw((r) => ({ ...r, image }))} />
+              <ImagePicker url={raw.image} onUploaded={(image) => setRaw((r) => ({ ...r, image }))} onPreview={setPreviewSrc} />
               <div className="flex-1 space-y-4">
                 <Field label="Name" htmlFor="name">
-                  <input id="name" className={inputClass} value={raw.name} onChange={set("name")} maxLength={LIMITS.name} placeholder="Quantum Frog" />
+                  <input id="name" className={inputClass} value={raw.name} onChange={set("name")} maxLength={LIMITS.name * 2} placeholder="Quantum Frog" autoComplete="off" />
                 </Field>
                 <Field label="Ticker" htmlFor="symbol">
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-faint">$</span>
-                    <input id="symbol" className={`${inputClass} pl-6 font-mono`} value={raw.symbol} onChange={set("symbol")} maxLength={LIMITS.symbol} placeholder="QFROG" />
+                    <input id="symbol" className={`${inputClass} pl-6 font-mono`} value={raw.symbol} onChange={set("symbol")} maxLength={LIMITS.symbol} placeholder="QFROG" autoComplete="off" />
                   </div>
                 </Field>
               </div>
             </div>
             <Field label="Description" htmlFor="description" hint={`${[...raw.description].length}/${LIMITS.description}`}>
-              <textarea id="description" className={`${inputClass} min-h-24 resize-y`} value={raw.description} onChange={set("description")} maxLength={LIMITS.description} />
+              <textarea id="description" className={`${inputClass} min-h-24 resize-y`} value={raw.description} onChange={set("description")} maxLength={LIMITS.description * 2} />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="X (optional)" htmlFor="twitter">
-                <input id="twitter" className={inputClass} value={raw.twitter} onChange={set("twitter")} placeholder="@handle or link" />
+                <input id="twitter" className={inputClass} value={raw.twitter} onChange={set("twitter")} placeholder="@handle or link" autoComplete="off" />
               </Field>
               <Field label="Telegram (optional)" htmlFor="telegram">
-                <input id="telegram" className={inputClass} value={raw.telegram} onChange={set("telegram")} placeholder="@group or t.me link" />
+                <input id="telegram" className={inputClass} value={raw.telegram} onChange={set("telegram")} placeholder="@group or t.me link" autoComplete="off" />
               </Field>
             </div>
             <Field
@@ -277,15 +362,15 @@ export function LaunchView() {
             <div className="flex gap-3 p-5">
               <div className="size-16 shrink-0 overflow-hidden rounded-lg bg-panel-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {raw.image && <img src={raw.image} alt="" className="size-full object-cover" />}
+                {previewSrc && <img src={previewSrc} alt="" className="size-full object-cover" />}
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate font-semibold text-fg">{raw.name || "Your coin"}</span>
-                  <ShieldCheck className="size-3.5 text-mint" />
+                  <ShieldCheck className="size-3.5 shrink-0 text-mint" />
                 </div>
-                <div className="font-mono text-xs text-muted">${raw.symbol || "TICKER"}</div>
-                <p className="mt-1 line-clamp-2 text-xs text-muted">{raw.description || "Description"}</p>
+                <div className="truncate font-mono text-xs text-muted">${raw.symbol || "TICKER"}</div>
+                <p className="mt-1 line-clamp-2 break-words text-xs text-muted">{raw.description || "Description"}</p>
               </div>
             </div>
             {keys && preview && (
@@ -323,14 +408,12 @@ export function LaunchView() {
                 <label className="flex items-start gap-2.5 rounded-lg border border-warn/25 bg-warn/5 p-3 text-xs text-muted">
                   <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} className="mt-0.5 accent-mint" />
                   <span>
-                    I understand that pump.fun&apos;s <span className="text-fg">creator fees on this coin go to the {site.name} treasury</span>, not to my wallet: the
-                    treasury is the coin&apos;s on-chain creator. My wallet signs and pays for the launch, and the post-quantum attestation names me as the
-                    launcher.
+                    I understand that pump.fun&apos;s <span className="text-fg">creator fees on this coin go to the {site.name} treasury</span>, not to my wallet.
                   </span>
                 </label>
 
-                {phase !== "idle" && (
-                  <ol className="space-y-1.5">
+                {phase !== "idle" && phase !== "sent" && (
+                  <ol className="space-y-1.5" aria-live="polite">
                     {PHASES.map((p, i) => {
                       const at = PHASES.findIndex((x) => x.id === phase);
                       const state = phase === "done" || i < at ? "done" : i === at ? "active" : "todo";
@@ -344,10 +427,23 @@ export function LaunchView() {
                   </ol>
                 )}
 
+                {phase === "sent" && sent && (
+                  <Notice tone="info" title="Sent, still confirming">
+                    Your launch was sent but hasn&apos;t confirmed yet. It will appear on{" "}
+                    <Link href="/identity" className="text-ice underline">
+                      your identity page
+                    </Link>{" "}
+                    once it lands.
+                    {sent.signature && (
+                      <a href={explorerTx(sent.signature)} target="_blank" rel="noreferrer" className="mt-1 block text-ice underline">
+                        View the transaction ↗
+                      </a>
+                    )}
+                  </Notice>
+                )}
                 {error && (
                   <Notice tone="bad" title="Launch didn't go through">
-                    {error}
-                    {loadAttempt() && <span className="mt-1 block text-faint">Retrying with the same details reuses the same key and mint.</span>}
+                    <span className="break-words">{error}</span>
                   </Notice>
                 )}
                 {cleaned.error && (raw.name || raw.symbol) && <p className="text-xs text-warn">{cleaned.error}</p>}

@@ -140,16 +140,17 @@ export default function DocsPage() {
           </P>
           <Ul>
             <li>
-              <strong className="text-fg">Protects:</strong> proof of who launched a coin, after a curve break; identity ownership, via a challenge-response
-              that never touches ed25519; one-time key reuse, refused by the database.
+              <strong className="text-fg">Protects:</strong> proof of who launched a coin, after a curve break, for identities with a passphrase (see
+              below); identity ownership, via a challenge-response that never touches ed25519.
             </li>
             <li>
               <strong className="text-fg">Does not protect:</strong> funds. SOL and tokens in ordinary Solana accounts are guarded by ed25519 and nothing
               else. Moving value under hash-based control needs an on-chain verifier program; that is on the roadmap.
             </li>
             <li>
-              <strong className="text-fg">Wallet-only identities</strong> are only as strong as the wallet: whoever can produce your wallet&apos;s signature can
-              re-derive the keys. A passphrase closes that gap.
+              <strong className="text-fg">Wallet-only identities</strong> have no post-quantum value: the keys come from a wallet signature, so whoever recovers
+              the wallet&apos;s ed25519 key after a break can re-derive them. Verifiers can&apos;t tell such identities apart. With a passphrase, an attacker
+              also has to guess it, offline, at scrypt (2^17) cost per guess: use a long, random one.
             </li>
           </Ul>
         </Section>
@@ -218,7 +219,7 @@ stretched  = scrypt(passphrase, "${PROTOCOL}/passphrase/<wallet>", N = 2^${Math.
 seed       = HKDF-SHA-256(walletSig ‖ stretched, salt "${PROTOCOL}", info "identity-seed")
 skSeed     = HKDF(seed, info "wots-secret/<epoch>")
 pubSeed    = HKDF(seed, info "public-seed/<epoch>")
-mint key   = ed25519 keypair from HKDF(seed, info "mint/<epoch>/<leaf>")
+mint key   = ed25519 keypair from HKDF(seed, info "mint/<epoch>/<leaf as 8 hex digits>")
 `}</Pre>
           <P>
             The fixed message names no site and no domain on purpose: if it changed, every identity would change with it. It does say plainly, in the
@@ -244,7 +245,11 @@ mint key   = ed25519 keypair from HKDF(seed, info "mint/<epoch>/<leaf>")
         </Section>
 
         <Section id="launch" title="Launch attestation">
-          <P>The launch digest covers every field of the coin a holder sees, each length-prefixed so no boundary can shift:</P>
+          <P>
+            The launch digest covers the mint, the launching wallet, the identity and key, and the coin&apos;s name, ticker, description, image and links,
+            each length-prefixed so no boundary can shift. Not signed: the dev buy (the site shows the amount read from the creation transaction) and
+            the anchor (a separate on-chain fact).
+          </P>
           <Pre>{`
 digest = SHA-256("${PROTOCOL}/launch" ‖ 0x00 ‖ lp(mint) ‖ lp(creator) ‖ lp(pqAddress) ‖ lp(u32 leaf)
                  ‖ lp(name) ‖ lp(symbol) ‖ lp(description) ‖ lp(image) ‖ lp(twitter) ‖ lp(telegram))
@@ -287,7 +292,8 @@ lp(x)  = u32 byte length ‖ x (UTF-8)
         <Section id="proofs" title="Proof of possession">
           <P>
             To prove you hold an identity, request a random 32-byte challenge and sign <C>{`SHA-256("${PROTOCOL}/prove" ‖ 0x00 ‖ lp(address) ‖ lp(challenge) ‖ lp(u32 leaf) ‖ lp(note))`}</C>{" "}
-            with your next one-time key. The server checks it against your registered root and consumes both the challenge and the key. No wallet and no
+            with your next one-time key. The server checks it against your registered root and spends the key the moment the signature verifies, then the
+            challenge. No wallet and no
             elliptic curve are involved, so this is the login that keeps working after a break. Each proof gets a public page that re-verifies it.
           </P>
         </Section>
@@ -299,18 +305,22 @@ lp(x)  = u32 byte length ‖ x (UTF-8)
               classically and 2^128 with Grover.
             </li>
             <li>
-              <strong className="text-fg">Key reuse</strong> is the one way to break WOTS. Clients always pick an unused key, and the database refuses a
-              second use of (identity, leaf) whatever the request order. A retried launch with identical details reuses its own key on purpose: the
-              signature is byte-for-byte the same, so nothing new is revealed.
+              <strong className="text-fg">Key reuse</strong> is the one way to break WOTS: two signatures from one key let anyone who sees both forge
+              messages. Three layers prevent it. The browser journals every key it signs with (permanently, before the signature leaves the page) and
+              never signs a different message with one, across tabs too. The server spends a key the moment it sees a valid signature, before anything
+              else can fail. The database refuses a second use of (identity, leaf). A retried launch with identical details re-signs the identical
+              digest on purpose: nothing new is revealed.
             </li>
             <li>
-              <strong className="text-fg">The server</strong> never sees your seed, your secret keys or your mint key. It sees signatures, which are public
-              anyway. It can refuse service; it cannot forge a signature or move funds. You do trust it to serve honest page code, as with any web
-              wallet flow; the protocol itself doesn&apos;t depend on it, which is why every check here can be re-run independently.
+              <strong className="text-fg">The server</strong> never sees your seed, your secret keys or your mint key. It can refuse service; on its own it
+              can&apos;t forge your signature or move funds, and the page checks the launch transaction before your wallet signs it (exact name, ticker,
+              metadata, buy cap, no extra instructions). It does see each signature as you submit it, which is why reuse is prevented in the browser,
+              not only on the server. You trust it to serve honest page code, as with any web wallet flow; the protocol checks don&apos;t depend on it
+              and can be re-run independently.
             </li>
             <li>
               <strong className="text-fg">Keys in the browser</strong> stay in memory only and are dropped when the tab closes. They are never written to
-              storage.
+              storage; only the list of keys already used (and what each signed) is kept, so they can&apos;t be reused.
             </li>
             <li>
               <strong className="text-fg">Exhaustion:</strong> an identity has 255 usable keys. Rotating to a fresh tree (a new epoch) certified by the last
@@ -338,26 +348,32 @@ lp(x)  = u32 byte length ‖ x (UTF-8)
 
         <Section id="verify" title="Verify it yourself">
           <P>
-            A standalone verifier, written separately from the site&apos;s TypeScript and using only Python&apos;s standard library. It fetches a coin&apos;s
-            metadata, rebuilds the digest, walks the chains and the tree, and checks the address. The test vectors it ships with are the same ones the
+            A standalone verifier, written separately from the site&apos;s TypeScript and using only Python&apos;s standard library. Given a mint, it reads
+            the coin&apos;s metadata URI from Solana itself (not from this site), checks the on-chain name and ticker, requires the attestation to name
+            this mint, rebuilds the digest, walks the chains and the tree, and checks the address. The test vectors it ships with are the same ones the
             site&apos;s tests use.
           </P>
           <Pre>{`
 curl -O ${site.url}/verify.py
-python3 verify.py ${site.url}/coin/<mint>
+python3 verify.py <mint>                     # or a coin page link; --rpc <url> for another RPC
 `}</Pre>
           <P>Or in TypeScript, against this repository&apos;s library:</P>
           <Pre>{`
-import { launchDigest, verify, identityFromHex, signatureFromBase64 } from "@/lib/pq";
+import { launchDigest, pqAddress, verify, identityFromHex, signatureFromBase64 } from "@/lib/pq";
 
+// metadataUri: read it from the mint's on-chain Token-2022 metadata, not from a website.
 const meta = await fetch(metadataUri).then((r) => r.json());
 const { pq } = meta;
+const identity = identityFromHex(pq.identity)!;
+if (pq.mint !== mint) throw new Error("attestation is for another coin");
+if (pqAddress(identity) !== pq.identity.address) throw new Error("address doesn't match the root");
+if (pq.leaf === 0) throw new Error("key 0 only signs registrations");
 const digest = launchDigest({
   mint: pq.mint, creator: pq.creator, pqAddress: pq.identity.address, leaf: pq.leaf,
   name: meta.name, symbol: meta.symbol, description: meta.description ?? "", image: meta.image,
   twitter: meta.twitter ?? "", telegram: meta.telegram ?? "",
 });
-const { valid } = verify(digest, signatureFromBase64(pq.signature)!, identityFromHex(pq.identity)!);
+const { valid } = verify(digest, signatureFromBase64(pq.signature)!, identity);
 `}</Pre>
         </Section>
       </article>

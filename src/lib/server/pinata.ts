@@ -4,9 +4,10 @@ import { bad } from "./http";
 
 /**
  * Coin images and metadata are pinned to IPFS through Pinata, never stored on
- * this server: content-addressed, and it outlives the site.
+ * this server: content-addressed, and it outlives the site. Every pin's id is
+ * kept so takedowns and unused uploads can be unpinned.
  */
-async function upload(file: Blob, name: string): Promise<string> {
+async function upload(file: Blob, name: string): Promise<{ cid: string; id: string }> {
   const form = new FormData();
   form.append("network", "public");
   form.append("name", name);
@@ -21,23 +22,33 @@ async function upload(file: Blob, name: string): Promise<string> {
     console.error("pinata:", res.status, (await res.text().catch(() => "")).slice(0, 300));
     return bad("IPFS upload failed. Try again in a moment.", 502);
   }
-  const json = (await res.json()) as { data?: { cid?: string } };
-  return json.data?.cid ?? bad("IPFS upload returned no content id", 502);
+  const json = (await res.json()) as { data?: { cid?: string; id?: string } };
+  if (!json.data?.cid || !json.data.id) return bad("IPFS upload returned no content id", 502);
+  return { cid: json.data.cid, id: json.data.id };
 }
 
-const gatewayUrl = (cid: string) => `https://${env.pinataGateway()}/ipfs/${cid}`;
+export const gatewayUrl = (cid: string) => `https://${env.pinataGateway()}/ipfs/${cid}`;
 
-export async function pinFile(file: Blob, name: string): Promise<{ cid: string; url: string }> {
-  const cid = await upload(file, name);
-  return { cid, url: gatewayUrl(cid) };
+export async function pinFile(file: Blob, name: string): Promise<{ cid: string; id: string; url: string }> {
+  const pinned = await upload(file, name);
+  return { ...pinned, url: gatewayUrl(pinned.cid) };
 }
 
-export async function pinJson(value: unknown, name: string): Promise<{ cid: string; url: string }> {
-  const cid = await upload(new Blob([JSON.stringify(value)], { type: "application/json" }), name);
-  return { cid, url: gatewayUrl(cid) };
+export async function pinJson(value: unknown, name: string): Promise<{ cid: string; id: string; url: string }> {
+  return pinFile(new Blob([JSON.stringify(value)], { type: "application/json" }), name);
 }
 
-/** True for a file pinned through our gateway: launches may only reference those. */
+/** Removes a pin; our gateway stops serving it. True when gone (or already gone). */
+export async function unpin(id: string): Promise<boolean> {
+  const res = await fetch(`https://api.pinata.cloud/v3/files/public/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${env.pinataJwt()}` },
+    signal: AbortSignal.timeout(20_000),
+  }).catch(() => null);
+  return Boolean(res && (res.ok || res.status === 404));
+}
+
+/** True for a URL on our own gateway; prepare additionally requires it to be one of our uploads. */
 export function isGatewayUrl(url: string): boolean {
   try {
     const u = new URL(url);

@@ -25,7 +25,7 @@ function passphraseHint(wallet: string): boolean | null {
   }
 }
 
-export function PassphraseInput({ value, onChange, placeholder, autoFocus, id }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; id?: string }) {
+export function PassphraseInput({ value, onChange, placeholder, autoFocus, id, label }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; id?: string; label?: string }) {
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
@@ -39,6 +39,7 @@ export function PassphraseInput({ value, onChange, placeholder, autoFocus, id }:
         autoFocus={autoFocus}
         autoComplete="off"
         spellCheck={false}
+        aria-label={label ?? "Passphrase"}
       />
       <button type="button" onClick={() => setShow(!show)} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-faint hover:text-fg" aria-label={show ? "Hide passphrase" : "Show passphrase"}>
         {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -68,7 +69,7 @@ export function UnlockProgressBar() {
  */
 export function RequireKeys({ children, purpose }: { children: ReactNode; purpose: string }) {
   const { address, connect } = useWallet();
-  const { detail, keys, unlock, unlocking } = useIdentity();
+  const { detail, keys, unlock, unlocking, lookupError, refresh } = useIdentity();
   const [passphrase, setPassphrase] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<boolean | null>(null);
@@ -83,6 +84,16 @@ export function RequireKeys({ children, purpose }: { children: ReactNode; purpos
         <p className="text-sm text-muted">Connect a Solana wallet to {purpose}.</p>
         <Button className="mt-4" onClick={connect}>
           Connect wallet
+        </Button>
+      </Panel>
+    );
+  }
+  if (detail === undefined && lookupError) {
+    return (
+      <Panel className="space-y-3 p-6 text-center">
+        <p className="text-sm text-bad">Couldn&apos;t load your identity: {lookupError}</p>
+        <Button variant="secondary" onClick={() => refresh().catch(() => {})}>
+          Try again
         </Button>
       </Panel>
     );
@@ -122,7 +133,7 @@ export function RequireKeys({ children, purpose }: { children: ReactNode; purpos
           Your wallet signs a fixed message; your keys are re-derived from it here, in this tab. Nothing secret is sent anywhere, and the keys are forgotten
           when you close the tab.
         </p>
-        {hint !== false && <PassphraseInput value={passphrase} onChange={setPassphrase} placeholder={hint ? "Passphrase" : "Passphrase (if you set one)"} autoFocus={hint === true} />}
+        {hint !== false && <PassphraseInput id="unlock-passphrase" label="Passphrase" value={passphrase} onChange={setPassphrase} placeholder={hint ? "Passphrase" : "Passphrase (if you set one)"} autoFocus={hint === true} />}
         <UnlockProgressBar />
         {error && <Notice tone="bad">{error}</Notice>}
         <Button type="submit" className="w-full" loading={Boolean(unlocking)}>

@@ -28,3 +28,9 @@ export function field<T>(fn: () => T): T {
 
 export const text = (value: unknown, max: number, what: string, opts?: { required?: boolean; multiline?: boolean }) =>
   field(() => cleanText(value, max, what, opts));
+
+export function integer(value: unknown, min: number, max: number, what: string): number {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  if (typeof n !== "number" || !Number.isInteger(n) || n < min || n > max) return bad(`Invalid ${what}`);
+  return n;
+}

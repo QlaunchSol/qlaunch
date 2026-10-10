@@ -66,11 +66,14 @@ export function seedMessage(wallet: string): string {
 
 /**
  * The statement that binds a wallet and an identity in both directions: the
- * wallet signs it with ed25519, the identity signs it with leaf 0.
+ * wallet signs it with ed25519, the identity signs it with leaf 0. It names no
+ * site: an identity is derived the same way everywhere, so a site-specific
+ * statement would make key #0 sign two different messages (staging and
+ * production, or before and after a rebrand).
  */
-export function registrationStatement(f: { site: string; wallet: string; pqAddress: string; root: string; pubSeed: string; epoch: number }): string {
+export function registrationStatement(f: { wallet: string; pqAddress: string; root: string; pubSeed: string; epoch: number }): string {
   return [
-    `${f.site}: register post-quantum identity`,
+    "Register post-quantum identity",
     "",
     "This wallet and this hash-based identity belong to the same person.",
     "",

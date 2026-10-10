@@ -68,11 +68,14 @@ export type LaunchRow = {
   created_at: string;
   launched_at: string | null;
   hidden: boolean;
+  metadata_pin_id: string | null;
+  dev_tokens: string | null;
+  failure_reason: string | null;
 };
 
 export type CoinRow = Pick<
   LaunchRow,
-  "mint" | "name" | "symbol" | "description" | "image_url" | "metadata_uri" | "twitter" | "telegram" | "creator" | "pq_address" | "leaf" | "dev_buy_sol" | "tx_signature" | "created_at" | "launched_at"
+  "mint" | "name" | "symbol" | "description" | "image_url" | "metadata_uri" | "twitter" | "telegram" | "creator" | "pq_address" | "leaf" | "dev_tokens" | "tx_signature" | "created_at" | "launched_at"
 > & {
   price_usd: number | null;
   market_cap_usd: number | null;
@@ -123,8 +126,8 @@ export async function setAnchor(id: number, tx: string, slot: number, at: string
 // ── one-time keys ────────────────────────────────────────────────────────────
 
 export function usedLeaves(identityId: number) {
-  return sql()<{ leaf: number; purpose: string; ref: string | null; created_at: string }[]>`
-    select leaf, purpose, ref, created_at from leaf_uses where identity_id = ${identityId} order by leaf`;
+  return sql()<{ leaf: number; purpose: string; ref: string | null; digest: string; created_at: string }[]>`
+    select leaf, purpose, ref, digest, created_at from leaf_uses where identity_id = ${identityId} order by leaf`;
 }
 
 /**
@@ -151,7 +154,9 @@ export function launchesOfIdentity(identityId: number) {
 }
 
 /** Inserts a pending launch; false if the mint or (identity, leaf) is already taken. */
-export async function insertLaunch(r: Omit<LaunchRow, "status" | "tx_signature" | "created_at" | "launched_at" | "hidden" | "dev_buy_sol"> & { dev_buy_sol: number }): Promise<boolean> {
+export async function insertLaunch(
+  r: Omit<LaunchRow, "status" | "tx_signature" | "created_at" | "launched_at" | "hidden" | "dev_buy_sol" | "dev_tokens" | "failure_reason"> & { dev_buy_sol: number },
+): Promise<boolean> {
   try {
     await sql()`insert into launches ${sql()(r)}`;
     return true;
@@ -161,22 +166,29 @@ export async function insertLaunch(r: Omit<LaunchRow, "status" | "tx_signature" 
   }
 }
 
-export async function setDevBuy(mint: string, devBuySol: number) {
-  await sql()`update launches set dev_buy_sol = ${devBuySol}, status = 'pending' where mint = ${mint} and status <> 'live'`;
-}
-
-/** Marks a launch live; true if this call made the change. */
-export async function setLive(mint: string, txSignature: string | null): Promise<boolean> {
-  const rows = await sql()`update launches set status = 'live', tx_signature = ${txSignature}, launched_at = now() where mint = ${mint} and status <> 'live' returning mint`;
+/** Marks a launch live, with the creation transaction and the dev buy as landed; true if this call made the change. */
+export async function setLive(mint: string, txSignature: string, devTokens: number): Promise<boolean> {
+  const rows = await sql()`
+    update launches set status = 'live', tx_signature = ${txSignature}, dev_tokens = ${devTokens}, launched_at = now(), failure_reason = null
+    where mint = ${mint} and status <> 'live' returning mint`;
+  if (rows.length) await sql()`update uploads set used_at = coalesce(used_at, now()) where url = (select image_url from launches where mint = ${mint})`;
   return rows.length > 0;
 }
 
-export function pendingLaunchesSince(since: string) {
-  return sql()<{ mint: string }[]>`select mint from launches where status = 'pending' and created_at >= ${since} order by created_at desc limit 50`;
+/** A launch whose on-chain state can never match its attestation: never listed. */
+export async function setFailed(mint: string, reason: string) {
+  await sql()`update launches set status = 'failed', failure_reason = ${reason.slice(0, 500)} where mint = ${mint} and status <> 'live'`;
 }
 
-export async function failLaunchesBefore(before: string) {
-  await sql()`update launches set status = 'failed' where status = 'pending' and created_at < ${before}`;
+export function pendingLaunchesSince(since: string) {
+  return sql()<LaunchRow[]>`select * from launches where status = 'pending' and created_at >= ${since} order by created_at desc limit 100`;
+}
+
+/** Pending launches that never landed: failed, and their metadata pins returned for unpinning. */
+export async function failLaunchesBefore(before: string): Promise<{ mint: string; metadata_pin_id: string | null }[]> {
+  return sql()<{ mint: string; metadata_pin_id: string | null }[]>`
+    update launches set status = 'failed', failure_reason = coalesce(failure_reason, 'never landed on chain')
+    where status = 'pending' and created_at < ${before} returning mint, metadata_pin_id`;
 }
 
 export async function liveMints(limit = 1000): Promise<string[]> {
@@ -210,9 +222,15 @@ export function coinPage(p: { sort: keyof typeof SORT_COLUMNS; graduated: boolea
     limit ${p.limit} offset ${p.offset}`;
 }
 
-export async function coinByMint(mint: string): Promise<(CoinRow & { digest: string; signature: string }) | null> {
-  const [row] = await sql()<(CoinRow & { digest: string; signature: string })[]>`
-    select c.*, l.digest, l.signature from coins c join launches l using (mint) where c.mint = ${mint}`;
+export type CoinDetailRow = CoinRow & { digest: string; signature: string; leaf_purpose: string | null; leaf_ref: string | null; leaf_digest: string | null };
+
+/** A visible coin, its attestation, and the registry's record of the one-time key it used. */
+export async function coinByMint(mint: string): Promise<CoinDetailRow | null> {
+  const [row] = await sql()<CoinDetailRow[]>`
+    select c.*, l.digest, l.signature, u.purpose as leaf_purpose, u.ref as leaf_ref, u.digest as leaf_digest
+    from coins c join launches l using (mint)
+    left join leaf_uses u on u.identity_id = l.identity_id and u.leaf = l.leaf
+    where c.mint = ${mint}`;
   return row ?? null;
 }
 
@@ -258,4 +276,54 @@ export async function insertProof(r: Omit<ProofRow, "created_at"> & { identity_i
 export async function proofById(id: string): Promise<ProofRow | null> {
   const [row] = await sql()<ProofRow[]>`select id, pq_address, leaf, challenge, note, digest, signature, created_at from proofs where id = ${id}`;
   return row ?? null;
+}
+
+// ── uploads (every pinned image, so unused ones get unpinned) ───────────────
+
+export type UploadRow = { cid: string; pin_id: string; url: string; sha256: string; dhash: string | null; ip_hash: string; created_at: string; used_at: string | null };
+
+export async function uploadBySha(sha256: string): Promise<UploadRow | null> {
+  const [row] = await sql()<UploadRow[]>`select * from uploads where sha256 = ${sha256}`;
+  return row ?? null;
+}
+
+export async function uploadByUrl(url: string): Promise<UploadRow | null> {
+  const [row] = await sql()<UploadRow[]>`select * from uploads where url = ${url}`;
+  return row ?? null;
+}
+
+export async function insertUpload(r: Omit<UploadRow, "created_at" | "used_at">) {
+  await sql()`insert into uploads ${sql()(r)} on conflict do nothing`;
+}
+
+/** Uploads in the last 24 h, from this client and overall. */
+export async function uploadCounts(ipHash: string): Promise<{ mine: number; all: number }> {
+  const [row] = await sql()<{ mine: number; all: number }[]>`
+    select count(*) filter (where ip_hash = ${ipHash})::int as mine, count(*)::int as all
+    from uploads where created_at > now() - interval '24 hours'`;
+  return row;
+}
+
+/** Images moderation has removed: their exact hash and perceptual hash. */
+export async function blockedImages(): Promise<{ sha256: string; dhash: string | null }[]> {
+  return sql()<{ sha256: string; dhash: string | null }[]>`select sha256, dhash from blocked_images`;
+}
+
+export async function markUploadUsed(url: string) {
+  await sql()`update uploads set used_at = coalesce(used_at, now()) where url = ${url}`;
+}
+
+/** Images nobody launched with: pinned before `before`, never used. */
+export function unusedUploadsBefore(before: string) {
+  return sql()<UploadRow[]>`select * from uploads where used_at is null and created_at < ${before} order by created_at limit 200`;
+}
+
+export async function deleteUpload(cid: string) {
+  await sql()`delete from uploads where cid = ${cid}`;
+}
+
+// ── reports ──────────────────────────────────────────────────────────────────
+
+export async function insertReport(r: { mint: string; reason: string; details: string; ip_hash: string }) {
+  await sql()`insert into reports ${sql()(r)} on conflict do nothing`;
 }

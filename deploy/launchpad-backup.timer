@@ -1,10 +1,10 @@
 [Unit]
-Description=Nightly launchpad database backup
+Description=Hourly launchpad database backup
 
 [Timer]
-OnCalendar=*-*-* 03:30:00 UTC
+OnCalendar=hourly
 Persistent=true
-RandomizedDelaySec=10m
+RandomizedDelaySec=5m
 
 [Install]
 WantedBy=timers.target

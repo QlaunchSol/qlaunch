@@ -1,29 +1,50 @@
 [Unit]
-Description=Launchpad (Next.js)
-After=network-online.target redis-server.service
-Wants=network-online.target
+Description=Qlaunch (Next.js)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target postgresql.service redis-server.service
 
 [Service]
 Type=simple
-User=deploy
+# A dedicated account with no shell, no sudo and read-only access to the code:
+# a compromise of the app can't touch SSH keys, the deploy account or the build.
+User=qlaunch
+Group=qlaunch
 WorkingDirectory=/home/deploy/launchpad
+# Read by systemd (as root) and passed as environment; the app can't read the file.
 EnvironmentFile=/home/deploy/launchpad/.env.production
 Environment=NODE_ENV=production
-Environment=PORT=3000
-Environment=HOSTNAME=127.0.0.1
+Environment=NEXT_DIST_DIR=.next-live
 Environment=NEXT_TELEMETRY_DISABLED=1
 Environment=NODE_OPTIONS=--max-old-space-size=384
-Environment=NEXT_DIST_DIR=.next-live
-ExecStart=/home/deploy/launchpad/node_modules/.bin/next start
+ExecStart=/home/deploy/launchpad/node_modules/.bin/next start -H 127.0.0.1 -p 3000
 Restart=always
 RestartSec=3
-# Safety net: never wait the default 90 s for a stuck shutdown.
 TimeoutStopSec=15
-# Hardening
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=full
 MemoryMax=600M
+
+# Sandbox
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=-/home/deploy/launchpad/.next-live/cache
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

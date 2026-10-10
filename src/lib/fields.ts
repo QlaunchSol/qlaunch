@@ -12,11 +12,22 @@ const fail = (message: string): never => {
   throw new FieldError(message);
 };
 
+// Invisible and direction-changing characters: they let a name look like another
+// coin's (e.g. right-to-left overrides reordering a ticker). Zero-width joiners
+// stay out too; emoji sequences render fine without them in names.
+const INVISIBLE = /[\u00ad\u061c\u115f\u1160\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff\ufff9-\ufffb]/g;
+
 export function cleanText(value: unknown, max: number, what: string, { required = false, multiline = false } = {}): string {
   if (value == null || value === "") return required ? fail(`${what} is required`) : "";
   if (typeof value !== "string") return fail(`Invalid ${what}`);
-  // eslint-disable-next-line no-control-regex
-  const cleaned = value.replace(multiline ? /[\u0000-\u0009\u000b-\u001f\u007f]/g : /[\u0000-\u001f\u007f]/g, "").trim().normalize("NFC");
+  // Lone surrogates would encode to U+FFFD: two different strings, one digest.
+  if (!(value as string & { isWellFormed(): boolean }).isWellFormed()) fail(`${what} contains invalid characters`);
+  const cleaned = value
+    // eslint-disable-next-line no-control-regex
+    .replace(multiline ? /[\u0000-\u0009\u000b-\u001f\u007f]/g : /[\u0000-\u001f\u007f]/g, "")
+    .replace(INVISIBLE, "")
+    .trim()
+    .normalize("NFC");
   if (required && !cleaned) fail(`${what} is required`);
   if ([...cleaned].length > max) fail(`${what} must be at most ${max} characters`);
   return cleaned;
@@ -62,10 +73,16 @@ export function cleanSymbol(value: unknown): string {
 
 export type LaunchForm = { name: string; symbol: string; description: string; image: string; twitter: string; telegram: string };
 
+/** Names nobody may launch under: no "official Qlaunch token" impersonations. */
+const RESERVED = /q\W*l\W*a\W*u\W*n\W*c\W*h/i;
+
 export function cleanLaunchForm(raw: Partial<Record<keyof LaunchForm, unknown>>): LaunchForm {
+  const name = cleanText(raw.name, LIMITS.name, "Name", { required: true });
+  const symbol = cleanSymbol(raw.symbol);
+  if (RESERVED.test(name) || RESERVED.test(symbol)) fail("Names and tickers containing “Qlaunch” are reserved");
   return {
-    name: cleanText(raw.name, LIMITS.name, "Name", { required: true }),
-    symbol: cleanSymbol(raw.symbol),
+    name,
+    symbol,
     description: cleanText(raw.description, LIMITS.description, "Description", { multiline: true }),
     image: cleanText(raw.image, LIMITS.url, "Image", { required: true }),
     twitter: cleanTwitter(raw.twitter),

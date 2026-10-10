@@ -1,4 +1,9 @@
+import { clientIp } from "@/lib/server/http";
 import { listenerCount, onLaunch, onShutdown } from "@/lib/server/events";
+
+const PER_CLIENT = 4;
+const g = globalThis as typeof globalThis & { __streamsPerIp?: Map<string, number> };
+const perIp = (g.__streamsPerIp ??= new Map());
 
 const MAX_CLIENTS = 500;
 
@@ -8,6 +13,17 @@ const MAX_CLIENTS = 500;
  */
 export async function GET(request: Request) {
   if (listenerCount() >= MAX_CLIENTS) return new Response("Too many live connections", { status: 503 });
+  const ip = clientIp(request);
+  if ((perIp.get(ip) ?? 0) >= PER_CLIENT) return new Response("Too many live connections from this address", { status: 429 });
+  perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    const n = (perIp.get(ip) ?? 1) - 1;
+    if (n <= 0) perIp.delete(ip);
+    else perIp.set(ip, n);
+  };
   const encoder = new TextEncoder();
   let cleanup = () => {};
   const stream = new ReadableStream<Uint8Array>({
@@ -33,6 +49,7 @@ export async function GET(request: Request) {
         off();
         offShutdown();
         clearInterval(ping);
+        release();
       };
       request.signal.addEventListener("abort", () => {
         cleanup();

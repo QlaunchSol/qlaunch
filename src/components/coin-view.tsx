@@ -3,18 +3,21 @@
 import { ExternalLink, PartyPopper, ShieldCheck } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { coinUrl, explorerAccount, explorerTx, pumpUrl } from "@/config/site";
+import { coinUrl, explorerAccount, explorerTx, pumpUrl, site } from "@/config/site";
 import { api } from "@/lib/client/api";
+import type { Verdict } from "@/lib/client/verify-coin";
 import { count, price, usd } from "@/lib/format";
 import type { TokenDetail } from "@/lib/types";
 import { CoinImage } from "./coin-image";
 import { PriceChart } from "./price-chart";
+import { ReportButton } from "./report-dialog";
 import { TimeAgo } from "./time-ago";
 import { VerifyPanel } from "./verify-panel";
 import { Badge, ButtonLink, CopyButton, Hash, Notice, Panel, PanelHeader, Progress, Stat } from "./ui";
 
 export function CoinView({ initial }: { initial: TokenDetail }) {
   const [detail, setDetail] = useState(initial);
+  const [verdict, setVerdict] = useState<Verdict | null>(null);
   const launched = useSearchParams().get("launched") === "1";
   const coin = detail.coin!;
   const identity = detail.identity;
@@ -41,19 +44,29 @@ export function CoinView({ initial }: { initial: TokenDetail }) {
         <CoinImage src={coin.image} alt={coin.name} className="size-24 shrink-0 rounded-2xl border border-line sm:size-28" />
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-fg sm:text-3xl">{coin.name}</h1>
+            <h1 className="break-words text-2xl font-semibold tracking-tight text-fg sm:text-3xl">{coin.name}</h1>
             <span className="font-mono text-lg text-muted">${coin.symbol}</span>
-            <Badge tone="mint">
-              <ShieldCheck className="size-3" /> PQ-attested
-            </Badge>
+            {verdict === "valid" ? (
+              <Badge tone="mint">
+                <ShieldCheck className="size-3" /> PQ-attested
+              </Badge>
+            ) : verdict === "invalid" ? (
+              <Badge tone="bad">attestation invalid</Badge>
+            ) : (
+              <Badge>{verdict === "unknown" ? "attestation unchecked" : "verifying…"}</Badge>
+            )}
             {coin.complete && <Badge tone="ice">Graduated</Badge>}
           </div>
-          {coin.description && <p className="max-w-2xl whitespace-pre-line text-sm text-muted">{coin.description}</p>}
+          {coin.description && <p className="max-w-2xl whitespace-pre-line break-words text-sm text-muted">{coin.description}</p>}
+          <p className="text-[11px] text-faint">
+            Attested means the launcher is identified, not that {site.name} vouches for the coin. Do your own research.
+          </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-faint">
             <span className="flex items-center gap-1">
               mint <Hash value={coin.mint} href={explorerAccount(coin.mint)} />
             </span>
             <TimeAgo iso={coin.launchedAt} prefix="launched " />
+            <ReportButton mint={coin.mint} />
             {coin.twitter && (
               <a href={coin.twitter} target="_blank" rel="noreferrer" className="hover:text-fg">
                 X ↗
@@ -93,7 +106,7 @@ export function CoinView({ initial }: { initial: TokenDetail }) {
         <PriceChart mint={coin.mint} />
       </Panel>
 
-      <VerifyPanel mint={coin.mint} identity={identity} />
+      <VerifyPanel detail={detail} onVerdict={setVerdict} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel>
@@ -127,10 +140,10 @@ export function CoinView({ initial }: { initial: TokenDetail }) {
                 )}
               </dd>
             </div>
-            {coin.devBuySol > 0 && (
+            {coin.devTokens != null && coin.devTokens > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
-                <dt className="text-faint">Dev buy</dt>
-                <dd className="font-mono text-fg">{coin.devBuySol} SOL</dd>
+                <dt className="text-faint">Dev buy (on chain)</dt>
+                <dd className="font-mono text-fg">{((coin.devTokens / 1e9) * 100).toFixed(2)}% of supply</dd>
               </div>
             )}
           </dl>

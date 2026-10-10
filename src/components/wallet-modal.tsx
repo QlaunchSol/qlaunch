@@ -48,15 +48,33 @@ function Dialog({ onClose }: { onClose: () => void }) {
     }
   }, [pending, wallet, publicKey, connecting, onClose]);
 
+  // A wallet that never answers mustn't lock the dialog: give up after 60 s.
   useEffect(() => {
+    if (!pending) return;
+    const t = setTimeout(() => {
+      setPending(null);
+      select(null);
+      setError("The wallet didn't respond. Open it, unlock it, and try again.");
+    }, 60_000);
+    return () => clearTimeout(t);
+  }, [pending, select]);
+
+  // Focus moves into the dialog and back to where it was on close.
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    panel.current?.querySelector<HTMLElement>("button, a")?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      before?.focus?.();
+    };
   }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-bg/70 p-4 backdrop-blur-sm sm:items-center" onClick={onClose} role="dialog" aria-modal aria-label="Connect a wallet">
-      <div className="w-full max-w-sm animate-rise rounded-2xl border border-line-2 bg-panel shadow-2xl shadow-black/50" onClick={(e) => e.stopPropagation()}>
+      <div ref={panel} className="w-full max-w-sm animate-rise rounded-2xl border border-line-2 bg-panel shadow-2xl shadow-black/50" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <h2 className="text-sm font-semibold text-fg">{publicKey ? "Wallet" : "Connect a wallet"}</h2>
           <button onClick={onClose} className="rounded p-1 text-faint hover:text-fg" aria-label="Close">
@@ -131,6 +149,18 @@ function Dialog({ onClose }: { onClose: () => void }) {
                   </a>
                 ))}
               </div>
+            )}
+            {pending && (
+              <button
+                type="button"
+                className="w-full text-xs text-faint hover:text-muted"
+                onClick={() => {
+                  setPending(null);
+                  select(null);
+                }}
+              >
+                Cancel
+              </button>
             )}
             {error && <p className="text-xs text-bad">{error}</p>}
           </div>
